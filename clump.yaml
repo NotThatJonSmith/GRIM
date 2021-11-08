@@ -1,0 +1,39 @@
+name: GRIM
+apps:
+    - src/grim.cpp
+build-static-lib: false
+build-shared-lib: false
+dependencies:
+    - name: HartModels
+      url: https://github.com/NotThatJonSmith/HartModels.git
+      checkout: main
+    - name: CASK-Proxy-Platform
+      url: https://github.com/NotThatJonSmith/CASK-Proxy-Platform.git
+      checkout: main
+    - name: CASK-Devices
+      url: https://github.com/NotThatJonSmith/CASK-Devices.git
+      checkout: main
+    - name: HighELF
+      url: https://github.com/NotThatJonSmith/HighELF.git
+      checkout: main
+      clump:
+          public-header-paths:
+            - include
+          source-globs:
+            - src/*
+    - name: cxxopts
+      url: https://github.com/jarro2783/cxxopts.git
+      checkout: v2.2.1
+      clump:
+          public-header-paths:
+            - include
+
+    # - HartModels
+    # - RISCV-Knowledge = maybe??
+private-header-paths:
+  - HartKit/include
+  - HartModels/include
+public-header-paths: []
+source-globs:
+  - HartKit/src/*
+  - HartModels/src/*
