@@ -27,13 +27,6 @@ dependencies:
       clump:
           public-header-paths:
             - include
-
-    # - HartModels
-    # - RISCV-Knowledge = maybe??
-private-header-paths:
-  - HartKit/include
-  - HartModels/include
+private-header-paths: []
 public-header-paths: []
-source-globs:
-  - HartKit/src/*
-  - HartModels/src/*
+source-globs: []

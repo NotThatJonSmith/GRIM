@@ -1,0 +1,82 @@
+/dts-v1/;
+
+/*
+ * This is a device tree reverse-engineered from Berkeley's RISCV proxy kernel's
+ * expectations of the behavior of hardware under it. I put whatever is needed
+ * in this file to get the damn thing to boot.
+ */
+
+/{
+    #address-cells = <0x01>;
+    #size-cells = <0x01>;
+    
+    // TODO tie in the simulator class "DeadSimpleUART" via string keys or something...
+    uart0: serial@1000000 {
+        reg = <0x01000000 0x10>;
+        compatible = "sifive,uart0";
+    };
+
+    power0: finisher@1000010 {
+        reg = <0x01000010 0x1>;
+        compatible = "sifive,test0";
+    };
+
+    // The presence of any node in the dtb that has compatible = "ucb,htif0"
+    // causes the RISCV proxy kernel to set htif = 1 globally, and allow use of
+    // the Berkeley HTIF.
+    // htif0: htif {
+    //     compatible = "ucb,htif0";
+    // };
+
+    // "Core local interrupt"
+    clint0: clint@2000000 {
+        compatible = "riscv,clint0";
+        reg = <0x02000000 0x000c0000>; // Hardcoded in PK :(
+        interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>; // TODO what is this?
+    };
+
+    // TODO PLIC is the "platform level interrupt controller"
+
+    memory {
+
+        #address-cells = <0x01>;
+        #size-cells = <0x01>;
+        
+        region0: region@0 {
+            device_type = "memory";
+            reg = <0x00000000 0x10000000>;
+        };
+
+        region1: region@10000000 {
+            device_type = "memory";
+            reg = <0x80000000 0xe0000000>;
+        };
+
+    };
+
+    cpus {
+
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        cpu0: cpu {
+            
+            phandle = < &cpu0 >;
+
+            device_type = "cpu";
+            compatible = "riscv";
+            riscv,isa = "gc";
+            reg = <0>;
+
+            cpu0_intc: intc {
+                    
+                interrupt-controller;
+                #interrupt-cells = <1>;
+
+            };
+
+        };
+
+    };
+
+};
