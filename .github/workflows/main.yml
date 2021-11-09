@@ -49,4 +49,4 @@ jobs:
         run: python ./Clumps/configure.py
           
       - name: Run the ninja build
-        run: ninja
+        run: ./ninja/ninja
