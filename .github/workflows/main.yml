@@ -37,13 +37,13 @@ jobs:
         run: git submodule update --init
 
       - name: Bootstrap Ninja
-        run: cd ninja && python configure.py --bootstrap
+        run: cd ninja && python3 configure.py --bootstrap
 
       - name: Get Clumps dependencies
         run: pip install -r Clumps/requirements.txt
 
       - name: Gather dependencies
-        run: python ./Clumps/configure.py
+        run: python3 ./Clumps/configure.py
           
       - name: Run the ninja build
         run: ./ninja/ninja
