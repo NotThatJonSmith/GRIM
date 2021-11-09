@@ -40,7 +40,7 @@ jobs:
         run: cd ninja && python3 configure.py --bootstrap
 
       - name: Get Clumps dependencies
-        run: pip install -r Clumps/requirements.txt
+        run: pip3 install -r Clumps/requirements.txt
 
       - name: Gather dependencies
         run: python3 ./Clumps/configure.py
