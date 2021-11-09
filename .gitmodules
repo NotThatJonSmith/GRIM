@@ -1,6 +1,7 @@
-[submodule "Clumps"]
-	path = Clumps
-	url = https://github.com/NotThatJonSmith/Clumps.git
 [submodule "ninja"]
 	path = ninja
 	url = https://github.com/ninja-build/ninja.git
+[submodule "Stella"]
+	path = Stella
+	url = https://github.com/NotThatJonSmith/Stella.git
+	branch = main

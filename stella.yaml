@@ -16,7 +16,7 @@ dependencies:
     - name: HighELF
       url: https://github.com/NotThatJonSmith/HighELF.git
       checkout: main
-      clump:
+      stella-yaml:
           public-header-paths:
             - include
           source-globs:
@@ -24,7 +24,7 @@ dependencies:
     - name: cxxopts
       url: https://github.com/jarro2783/cxxopts.git
       checkout: v2.2.1
-      clump:
+      stella-yaml:
           public-header-paths:
             - include
 private-header-paths: []

@@ -1,49 +1,13 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
 
   build:
-
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Mac OS Big Sur
-            os: macos-11
-          - name: Ubuntu
-            os: ubuntu-latest
-          - name: Windows Server
-            os: windows-latest
-
-    steps:
-
-      - uses: actions/checkout@v2
-
-      - name: Initialize submodules
-        run: git submodule update --init
-
-      - name: Bootstrap Ninja
-        run: cd ninja && python3 configure.py --bootstrap
-
-      - name: Get Clumps dependencies
-        run: pip3 install -r Clumps/requirements.txt
-
-      - name: Gather dependencies
-        run: python3 ./Clumps/configure.py
-          
-      - name: Run the ninja build
-        run: ./ninja/ninja
+    uses: NotThatJonSmith/Stella/.github/workflows/stella-project-ci.yml
