@@ -19,14 +19,15 @@ jobs:
 
     runs-on: ${{ matrix.config.os }}
     strategy:
+      fail-fast: false
       matrix:
         config:
           - name: Mac OS Big Sur
             os: macos-11
           - name: Ubuntu
             os: ubuntu-latest
-          # - name: Windows Server
-          #   os: windows-latest
+          - name: Windows Server
+            os: windows-latest
 
     steps:
 
@@ -49,4 +50,4 @@ jobs:
         run: python ./Clumps/configure.py
           
       - name: Run the ninja build
-        run: ninja
+        run: ./ninja/ninja
