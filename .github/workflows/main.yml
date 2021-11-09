@@ -38,7 +38,7 @@ jobs:
         # TODO make sure the build environment has a sane Python...
 
       - name: Bootstrap Ninja
-        run: python ninja/configure.py --bootstrap
+        run: cd ninja && python configure.py --bootstrap
 
         # TODO install pip? Do we need to on any of the platforms?
         
