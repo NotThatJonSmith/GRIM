@@ -10,4 +10,4 @@ on:
 jobs:
 
   build:
-    uses: NotThatJonSmith/Stella/.github/workflows/stella-project-ci.yml
+    uses: NotThatJonSmith/Stella/.github/workflows/stella-project-ci.yml@main
