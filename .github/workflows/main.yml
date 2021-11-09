@@ -13,35 +13,40 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+  build:
+
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        config:
+          - name: Mac OS Big Sur
+            os: macos-11
+          - name: Ubuntu
+            os: ubuntu-latest
+          - name: Windows Server
+            os: windows-latest
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+
       - uses: actions/checkout@v2
 
       - name: Initialize submodules
         run: git submodule update --init
+
+        # TODO make sure the build environment has a sane Python...
+
+      - name: Bootstrap Ninja
+        run: python ninja/configure.py --bootstrap
+
+        # TODO install pip? Do we need to on any of the platforms?
         
       - name: Get GitPython
-        run: pip3 install GitPython
-        
-      - name: Install ninja
-        run: sudo apt install ninja-build
+        run: pip install GitPython
 
       - name: Gather dependencies
-        run: python3 ./Clumps/configure.py
+        run: python ./Clumps/configure.py
           
       - name: Run the ninja build
         run: ninja
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
