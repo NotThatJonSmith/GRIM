@@ -36,15 +36,11 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init
 
-        # TODO make sure the build environment has a sane Python...
-
       - name: Bootstrap Ninja
         run: cd ninja && python configure.py --bootstrap
 
-        # TODO install pip? Do we need to on any of the platforms?
-        
-      - name: Get GitPython
-        run: pip install GitPython
+      - name: Get Clumps dependencies
+        run: pip install -r Clumps/requirements.txt
 
       - name: Gather dependencies
         run: python ./Clumps/configure.py
