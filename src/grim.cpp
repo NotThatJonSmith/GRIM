@@ -115,7 +115,7 @@ __uint32_t tick_until(
 
 int main(int argc, char **argv) {
     
-    #pragma mark -- Parse Arguments --
+    // -- Parse Arguments --
 
     cxxopts::Options options("grim", "Generic RISC-V Interpretive Machine");
     options.add_options()
@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
         use_fast_model = true;
     }
 
-    #pragma mark -- System Construction --
+    // -- System Construction --
 
     CASK::Bus bus;
     CASK::EventQueue eq;
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
     CASK::PhysicalMemory mem;
     bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
-    #pragma mark -- Load the Kernel Image and Device Tree --
+    // -- Load the Kernel Image and Device Tree --
 
     for (unsigned int sid = 0; sid < elf.e_shnum; sid++) {
 
@@ -301,7 +301,7 @@ int main(int argc, char **argv) {
         hart->state.regs[11].Write<__uint32_t>(0xf0000000);
     }
 
-    #pragma mark -- Run the Simulation --
+    // -- Run the Simulation --
 
     unsigned int ticks = 0;
     unsigned int event = 0;
