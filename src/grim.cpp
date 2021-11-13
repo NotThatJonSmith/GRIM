@@ -70,6 +70,7 @@ void PrintRegs(HartState* state, std::ostream* out, bool abi=false, unsigned int
 
 }
 
+// Note: These parameters could be constexpr-if'd but that breaks pedantry, and the compiler does the right thing in O3.
 template <bool limit_cycles, bool check_events, bool print_regs, bool print_disasm>
 __uint32_t tick_until(
         CASK::Tickable *sched,
@@ -83,21 +84,21 @@ __uint32_t tick_until(
 
     while (true) {
 
-        if constexpr (print_disasm) {
+        if (print_disasm) {
             (*out) << DisassembleNext<__uint32_t>(disasm_hart->state.currentFetch);
         }
 
         sched->Tick();
 
-        if constexpr (print_regs) {
+        if (print_regs) {
             PrintRegs<__uint32_t>(&disasm_hart->state, out, useRegAbiNames);
         }
 
-        if constexpr (limit_cycles || check_events) {
+        if (limit_cycles || check_events) {
             (*ticks)++;
         }
 
-        if constexpr (check_events) {
+        if (check_events) {
             if ((*ticks) % event_check_freq == 0) {
                 if (!eq->IsEmpty()) {
                     return eq->DequeueEvent();
@@ -105,7 +106,7 @@ __uint32_t tick_until(
             }
         }
 
-        if constexpr (limit_cycles) {
+        if (limit_cycles) {
             if ((*ticks) > cycle_limit) {
                 return 0;
             }
