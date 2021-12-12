@@ -8,7 +8,7 @@
 #include <Schedule.hpp>
 #include <Bus.hpp>
 #include <IOLogger.hpp>
-#include <PhysicalMemory.hpp>
+#include <MappedPhysicalMemory.hpp>
 #include <CoreLocalInterruptor.hpp>
 #include <PowerButton.hpp>
 #include <ProxyKernelServer.hpp>
@@ -255,7 +255,7 @@ int main(int argc, char **argv) {
     }
 
     // Memory has to be the last target on the bus. This is hacky.
-    CASK::PhysicalMemory mem;
+    CASK::MappedPhysicalMemory mem;
     bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
     // -- Load the Kernel Image and Device Tree --
