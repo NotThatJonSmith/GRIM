@@ -213,6 +213,9 @@ int main(int argc, char **argv) {
     hart->spec.SetWidthSupport(RISCV::XlenMode::XL64, false);
     hart->spec.SetWidthSupport(RISCV::XlenMode::XL128, false);
 
+    CASK::MappedPhysicalMemory mem;
+    bus.AddIOTarget32(&mem, 0, 0xffffffff);
+    
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
 
@@ -253,10 +256,6 @@ int main(int argc, char **argv) {
             continue;
         }
     }
-
-    // Memory has to be the last target on the bus. This is hacky.
-    CASK::MappedPhysicalMemory mem;
-    bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
     // -- Load the Kernel Image and Device Tree --
 
