@@ -9,6 +9,7 @@
 #include <Bus.hpp>
 #include <IOLogger.hpp>
 #include <MappedPhysicalMemory.hpp>
+#include <PhysicalMemory.hpp> // TODO remove - in for a test
 #include <CoreLocalInterruptor.hpp>
 #include <PowerButton.hpp>
 #include <ProxyKernelServer.hpp>
@@ -203,7 +204,7 @@ int main(int argc, char **argv) {
 
     Hart* hart = nullptr;
     if (use_fast_model) {
-        hart = new OptimizedHart<true, false, 8, 0, 1>(hartIOTarget);
+        hart = new OptimizedHart<true, false, true, 8, 0, 1>(hartIOTarget);
     } else {
         hart = new SimpleHart(hartIOTarget);
     }
@@ -235,7 +236,7 @@ int main(int argc, char **argv) {
     pkServer.SetCommandLine(arg_string);
     pkServer.SetFSRoot(fs_root);
     if (print_syscalls) {
-        // pkServer.AttachLog(&std::cout); // TODO re-implement
+        pkServer.AttachLog(&std::cout);
     }
 
     CASK::ToHostInstrument toHost(&eq, shutdownEvent);
