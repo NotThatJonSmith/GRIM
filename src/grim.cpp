@@ -3,7 +3,7 @@
 #include <array>
 
 #include <cxxopts.hpp>
-#include <HighELF.hpp>
+#include <ElfFile.hpp>
 
 #include <Schedule.hpp>
 #include <Bus.hpp>
@@ -202,9 +202,12 @@ int main(int argc, char **argv) {
 
     CASK::IOTarget *hartIOTarget = print_mem ? (CASK::IOTarget*)&iologger : (CASK::IOTarget*)&bus;
 
+    CASK::MappedPhysicalMemory mem;
+    bus.AddIOTarget32(&mem, 0, 0xffffffff);
+
     Hart* hart = nullptr;
     if (use_fast_model) {
-        hart = new OptimizedHart<true, false, true, 8, 0, 1>(hartIOTarget);
+        hart = new OptimizedHart<true, false, true, true, 8, 0, 1>(hartIOTarget, &mem);
     } else {
         hart = new SimpleHart(hartIOTarget);
     }
@@ -214,9 +217,6 @@ int main(int argc, char **argv) {
     hart->spec.SetWidthSupport(RISCV::XlenMode::XL64, false);
     hart->spec.SetWidthSupport(RISCV::XlenMode::XL128, false);
 
-    CASK::MappedPhysicalMemory mem;
-    bus.AddIOTarget32(&mem, 0, 0xffffffff);
-    
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
 
@@ -243,7 +243,11 @@ int main(int argc, char **argv) {
 
     HighELF::ElfFile elf;
     elf.Load(elfFileName);
-    for (unsigned int sid = 0; sid < elf.e_shnum; sid++) {
+    if (elf.status != HighELF::ElfFile::Status::Loaded) {
+        std::cout << "Failed to load ELF file into memory!" << std::endl;
+    }
+
+    for (unsigned int sid = 0; sid < elf.elfHeader.e_shnum; sid++) {
         
         if (elf.sections[sid].name.compare(".htif") == 0) {
             __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
@@ -260,7 +264,7 @@ int main(int argc, char **argv) {
 
     // -- Load the Kernel Image and Device Tree --
 
-    for (unsigned int sid = 0; sid < elf.e_shnum; sid++) {
+    for (unsigned int sid = 0; sid < elf.elfHeader.e_shnum; sid++) {
 
         if (elf.sectionHeaders[sid].sh_type == 8) {
             continue;
@@ -307,12 +311,13 @@ int main(int argc, char **argv) {
     unsigned int ticks = 0;
     unsigned int event = 0;
 
-    hart->spec.resetVector.Write<__uint32_t>(elf.e_entry);
+    hart->spec.resetVector.Write<__uint32_t>(elf.elfHeader.e_entry);
 
     sched.BeforeFirstTick();
 
     auto begin = std::chrono::high_resolution_clock::now();
-    
+
+    // TODO clean this mess up
     if (cycle_limit != 0) {
         if (ignore_events) {
             if (print_disasm) {
