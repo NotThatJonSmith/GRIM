@@ -71,7 +71,8 @@ void PrintRegs(HartState* state, std::ostream* out, bool abi=false, unsigned int
 
 }
 
-// Note: These parameters could be constexpr-if'd but that breaks pedantry, and the compiler does the right thing in O3.
+// Note: These parameters could be constexpr-if'd but that breaks pedantry, and
+//       the compiler does the right thing in O3.
 template <bool limit_cycles, bool check_events, bool print_regs, bool print_disasm>
 __uint32_t tick_until(
         CASK::Tickable *sched,
@@ -113,6 +114,36 @@ __uint32_t tick_until(
             }
         }
     }
+}
+
+typedef unsigned int (*tick_func)(CASK::Tickable*, Hart*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
+
+template<unsigned int TickerHash>
+constexpr std::array<tick_func, 16> add_tickers(std::array<tick_func, 16> arr) {
+    if constexpr (TickerHash < 16) {
+        constexpr bool limit_cycles = TickerHash & 0b1000;
+        constexpr bool check_events = TickerHash & 0b0100;
+        constexpr bool print_regs   = TickerHash & 0b0010;
+        constexpr bool print_disasm = TickerHash & 0b0001;
+        arr[TickerHash] = tick_until<limit_cycles, check_events, print_regs, print_disasm>;
+        return add_tickers<TickerHash + 1>(arr);
+    }
+    return arr;
+}
+
+constexpr std::array<tick_func, 16> gen_tickers() {
+    std::array<tick_func, 16> result = {0};
+    result = add_tickers<0>(result);
+    return result;
+}
+
+constexpr std::array<tick_func, 16> tickers = gen_tickers();
+
+constexpr unsigned int hash_tick_params(bool limit_cycles, bool check_events, bool print_regs, bool print_disasm) {
+    return (limit_cycles ? 0b1000 : 0b0000) |
+           (check_events ? 0b0100 : 0b0000) |
+           (print_regs   ? 0b0010 : 0b0000) |
+           (print_disasm ? 0b0001 : 0b0000);
 }
 
 int main(int argc, char **argv) {
@@ -314,72 +345,11 @@ int main(int argc, char **argv) {
     hart->spec.resetVector.Write<__uint32_t>(elf.elfHeader.e_entry);
 
     sched.BeforeFirstTick();
+    unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm);
+    tick_func tick = tickers[tick_hash];
 
     auto begin = std::chrono::high_resolution_clock::now();
-
-    // TODO clean this mess up
-    if (cycle_limit != 0) {
-        if (ignore_events) {
-            if (print_disasm) {
-                if (print_regs) {
-                    event = tick_until<true, false, true, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<true, false, false, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            } else {
-                if (print_regs) {
-                    event = tick_until<true, false, true, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<true, false, false, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            }
-        } else {
-            if (print_disasm) {
-                if (print_regs) {
-                    event = tick_until<true, true, true, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<true, true, false, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            } else {
-                if (print_regs) {
-                    event = tick_until<true, true, true, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<true, true, false, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            }
-        } 
-    } else {
-        if (ignore_events) {
-            if (print_disasm) {
-                if (print_regs) {
-                    event = tick_until<false, false, true, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<false, false, false, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            } else {
-                if (print_regs) {
-                    event = tick_until<false, false, true, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<false, false, false, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            }
-        } else {
-            if (print_disasm) {
-                if (print_regs) {
-                    event = tick_until<false, true, true, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<false, true, false, true>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            } else {
-                if (print_regs) {
-                    event = tick_until<false, true, true, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                } else {
-                    event = tick_until<false, true, false, false>(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                }
-            }
-        }
-    }
-
+    event = tick(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
     auto end = std::chrono::high_resolution_clock::now();
 
     if (print_summary) {
