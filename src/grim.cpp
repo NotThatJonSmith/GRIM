@@ -9,16 +9,13 @@
 #include <Bus.hpp>
 #include <IOLogger.hpp>
 #include <MappedPhysicalMemory.hpp>
-#include <PhysicalMemory.hpp> // TODO remove - in for a test
 #include <CoreLocalInterruptor.hpp>
 #include <PowerButton.hpp>
 #include <ProxyKernelServer.hpp>
 #include <ToHostInstrument.hpp>
 #include <UART.hpp>
 #include <SimpleHart.hpp>
-#include <OptimizedHart.hpp>
-
-#include <CacheWrappedTranslator.hpp>
+// #include <OptimizedHart.hpp>
 
 
 __uint64_t MaskForSize(__uint64_t size) {
@@ -30,10 +27,10 @@ __uint64_t MaskForSize(__uint64_t size) {
 }
 
 template<typename XLEN_t>
-std::string DisassembleNext(HartState::Fetch* fetch) {
+std::string DisassembleNext(typename HartState<XLEN_t>::Fetch* fetch) {
     std::stringstream stream;
     stream << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-            << fetch->virtualPC.Read<XLEN_t>() << ":\t"
+            << fetch->virtualPC << ":\t"
             << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
             << fetch->encoding << "\t"
             << std::dec;
@@ -42,7 +39,7 @@ std::string DisassembleNext(HartState::Fetch* fetch) {
 }
 
 template<typename XLEN_t>
-void PrintRegs(HartState* state, std::ostream* out, bool abi=false, unsigned int regsPerLine=8) {
+void PrintRegs(HartState<XLEN_t>* state, std::ostream* out, bool abi=false, unsigned int regsPerLine=8) {
 
     (*out) << "Registers:" << std::endl;
 
@@ -55,11 +52,11 @@ void PrintRegs(HartState* state, std::ostream* out, bool abi=false, unsigned int
         if (abi) {
             (*out) << RISCV::registerAbiNames[i] << ": "
                     << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-                    << state->regs[i].Read<XLEN_t>();
+                    << state->regs[i];
         } else {
             (*out) << std::dec << std::setfill(' ') << std::setw(2) << i << ": "
                     << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-                    << state->regs[i].Read<XLEN_t>();
+                    << state->regs[i];
         }
 
         if ((i+1) % regsPerLine == 0) {
@@ -76,7 +73,7 @@ void PrintRegs(HartState* state, std::ostream* out, bool abi=false, unsigned int
 template <bool limit_cycles, bool check_events, bool print_regs, bool print_disasm>
 __uint32_t tick_until(
         CASK::Tickable *sched,
-        Hart *disasm_hart,
+        Hart<__uint32_t> *disasm_hart,
         CASK::EventQueue *eq,
         std::ostream *out,
         unsigned int *ticks,
@@ -116,7 +113,7 @@ __uint32_t tick_until(
     }
 }
 
-typedef unsigned int (*tick_func)(CASK::Tickable*, Hart*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
+typedef unsigned int (*tick_func)(CASK::Tickable*, Hart<__uint32_t>*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
 
 template<unsigned int TickerHash>
 constexpr std::array<tick_func, 16> add_tickers(std::array<tick_func, 16> arr) {
@@ -236,17 +233,16 @@ int main(int argc, char **argv) {
     CASK::MappedPhysicalMemory mem;
     bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
-    Hart* hart = nullptr;
+    Hart<__uint32_t>* hart = nullptr;
     if (use_fast_model) {
-        hart = new OptimizedHart<true, false, true, true, 8, 0, 1>(hartIOTarget, &mem);
+        // hart = new OptimizedHart<true, false, true, true, 8, 0, 1>(hartIOTarget, &mem);
     } else {
-        hart = new SimpleHart(hartIOTarget);
+        hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
 
-    hart->spec.SetExtensionSupport("imacsu");
-    hart->spec.SetWidthSupport(RISCV::XlenMode::XL32, true);
-    hart->spec.SetWidthSupport(RISCV::XlenMode::XL64, false);
-    hart->spec.SetWidthSupport(RISCV::XlenMode::XL128, false);
+    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL32, true);
+    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL64, false);
+    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL128, false);
 
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
@@ -334,7 +330,7 @@ int main(int argc, char **argv) {
         bus.Write32(0xf0000000, size, bytes);
         delete[] bytes;
 
-        hart->state.regs[11].Write<__uint32_t>(0xf0000000);
+        hart->state.regs[11] = 0xf0000000;
     }
 
     // -- Run the Simulation --
@@ -342,7 +338,7 @@ int main(int argc, char **argv) {
     unsigned int ticks = 0;
     unsigned int event = 0;
 
-    hart->spec.resetVector.Write<__uint32_t>(elf.elfHeader.e_entry);
+    hart->resetVector = elf.elfHeader.e_entry;
 
     sched.BeforeFirstTick();
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm);
