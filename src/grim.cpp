@@ -15,7 +15,7 @@
 #include <ToHostInstrument.hpp>
 #include <UART.hpp>
 #include <SimpleHart.hpp>
-// #include <OptimizedHart.hpp>
+#include <OptimizedHart.hpp>
 
 
 __uint64_t MaskForSize(__uint64_t size) {
@@ -228,6 +228,7 @@ __uint32_t tick_until(
         }
 
         if (check_events) {
+            // TODO ServiceInterrupts about here?
             if ((*ticks) % event_check_freq == 0) {
                 if (!eq->IsEmpty()) {
                     return eq->DequeueEvent();
@@ -368,14 +369,10 @@ int main(int argc, char **argv) {
 
     Hart<__uint32_t>* hart = nullptr;
     if (use_fast_model) {
-        // hart = new OptimizedHart<true, false, true, true, 8, 0, 1>(hartIOTarget, &mem);
+        hart = new OptimizedHart<__uint32_t, 8, true>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
-
-    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL32, true);
-    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL64, false);
-    // hart->spec.SetWidthSupport(RISCV::XlenMode::XL128, false);
 
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
