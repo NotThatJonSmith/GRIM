@@ -369,7 +369,7 @@ int main(int argc, char **argv) {
 
     Hart<__uint32_t>* hart = nullptr;
     if (use_fast_model) {
-        hart = new OptimizedHart<__uint32_t, 8, true>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        hart = new OptimizedHart<__uint32_t, 8, true, 1>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
@@ -436,6 +436,10 @@ int main(int argc, char **argv) {
                     elf.sections[sid].bytes.data());
     }
 
+    hart->resetVector = elf.elfHeader.e_entry;
+
+    sched.BeforeFirstTick();
+
     // TODO make a bytes file loader class - also this is naive and non-optimal
     if (!dtb_filename.empty()) {
 
@@ -467,10 +471,6 @@ int main(int argc, char **argv) {
 
     unsigned int ticks = 0;
     unsigned int event = 0;
-
-    hart->resetVector = elf.elfHeader.e_entry;
-
-    sched.BeforeFirstTick();
 
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm, print_details);
     tick_func tick = tickers[tick_hash];
