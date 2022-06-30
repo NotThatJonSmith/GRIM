@@ -16,6 +16,7 @@
 #include <UART.hpp>
 #include <SimpleHart.hpp>
 #include <OptimizedHart.hpp>
+#include <ThreadedHart.hpp>
 
 
 __uint64_t MaskForSize(__uint64_t size) {
@@ -282,6 +283,7 @@ int main(int argc, char **argv) {
 
     cxxopts::Options options("grim", "Generic RISC-V Interpretive Machine");
     options.add_options()
+    ("m,model", "Name of the hart model to use, one of (simple, fast, threaded)", cxxopts::value<std::string>())
     ("d,dtb", "Name of the Device Tree Blob file describing the platform", cxxopts::value<std::string>())
     ("f,fast", "Use the fast, risky model instead of the slow, sure model")
     ("k,kernel", "Name of the ELF executable to load into the simulation", cxxopts::value<std::string>())
@@ -349,9 +351,23 @@ int main(int argc, char **argv) {
         }
     }
 
-    bool use_fast_model = false;
-    if (parsed_arguments.count("fast")) {
-        use_fast_model = true;
+    enum HartModelArg { Simple, Fast, Threaded };
+
+    HartModelArg hartModel = Simple;
+    if (parsed_arguments.count("model")) {
+        std::string hartModelName = parsed_arguments["model"].as<std::string>();
+        if (hartModelName.compare("simple") == 0) {
+            hartModel = Simple;
+        } else if (hartModelName.compare("fast") == 0) {
+            hartModel = Fast;
+        } else if (hartModelName.compare("threaded") == 0) {
+            hartModel = Threaded;
+        } else {
+            std::cerr << "Warning: ignoring invalid --model argument "
+                      << "\"" << hartModelName << "\". Valid choice are "
+                      << "(simple, fast, threaded)."
+                      << std::endl;
+        }
     }
 
     // -- System Construction --
@@ -368,10 +384,12 @@ int main(int argc, char **argv) {
     bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
     Hart<__uint32_t>* hart = nullptr;
-    if (use_fast_model) {
-        hart = new OptimizedHart<__uint32_t, 3, true, 1>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
-    } else {
+    if (hartModel == Fast) {
+        hart = new OptimizedHart<__uint32_t, 3, true>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+    } else if (hartModel == Simple) {
         hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
+    } else {
+        hart = new ThreadedHart<__uint32_t, 3, true, 16>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     }
 
     CASK::UART uart;
