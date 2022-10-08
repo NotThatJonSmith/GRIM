@@ -18,7 +18,6 @@
 #include <OptimizedHart.hpp>
 #include <ThreadedHart.hpp>
 
-
 __uint64_t MaskForSize(__uint64_t size) {
     if (size > (__uint64_t)1 << 63) // TODO this assumes Address is 64 bit
         return ~(__uint64_t)0;
@@ -200,7 +199,13 @@ void PrintState(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned 
                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
                << state->currentFetch->encoding << "\t"
                << std::dec;
-        state->currentFetch->instruction.disassemble(state->currentFetch->operands, out);
+
+        // Re-decode the instruction so we don't have to carry the disassembly function around with us.
+        CodePoint codePoint = decode_instruction(
+            state->currentFetch->encoding,
+            state->misa.extensions,
+            state->misa.mxlen);
+        codePoint.disassemble(state->currentFetch->operands, out);
     }
 
 }
