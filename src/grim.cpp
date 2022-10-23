@@ -4,6 +4,7 @@
 
 #include <cxxopts.hpp>
 #include <ElfFile.hpp>
+#include <RiscVDecoder.hpp>
 
 #include <Schedule.hpp>
 #include <Bus.hpp>
@@ -199,13 +200,14 @@ void PrintState(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned 
                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
                << state->currentFetch->encoding << "\t"
                << std::dec;
-
-        // Re-decode the instruction so we don't have to carry the disassembly function around with us.
-        CodePoint codePoint = decode_instruction(
+        decode_instruction<__uint32_t, &std::cout>( // Actually, using constexpr ostream ptr is bad hackery.
             state->currentFetch->encoding,
             state->misa.extensions,
-            state->misa.mxlen);
-        codePoint.disassemble(state->currentFetch->operands, out);
+            state->misa.mxlen)(
+                state->currentFetch->encoding,
+                nullptr,
+                nullptr
+            );
     }
 
 }
