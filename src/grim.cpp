@@ -209,8 +209,8 @@ void PrintState(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned 
 //       the compiler does the right thing in O3.
 template <bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details>
 __uint32_t tick_until(
-        CASK::Tickable *sched,
-        Hart<__uint32_t> *disasm_hart,
+        Hart<__uint32_t> *hart,
+        CASK::CoreLocalInterruptor* clint,
         CASK::EventQueue *eq,
         std::ostream *out,
         unsigned int *ticks,
@@ -220,16 +220,18 @@ __uint32_t tick_until(
 
     while (true) {
 
-        PrintState<__uint32_t, print_regs, print_disasm, print_details>(&disasm_hart->state, out, useRegAbiNames, 4);
+        PrintState<__uint32_t, print_regs, print_disasm, print_details>(&hart->state, out, useRegAbiNames, 4);
 
-        sched->Tick();
+        for (unsigned int i = 0; i < 100; i++)
+            hart->Tick();
+        clint->Tick();
 
         if (limit_cycles || check_events) {
-            (*ticks)++;
+            (*ticks)+=100;
         }
 
         if (check_events) {
-            // TODO ServiceInterrupts about here?
+            // TODO ServiceInterrupts about here? Clint scheduled here?
             if ((*ticks) % event_check_freq == 0) {
                 if (!eq->IsEmpty()) {
                     return eq->DequeueEvent();
@@ -245,7 +247,7 @@ __uint32_t tick_until(
     }
 }
 
-typedef unsigned int (*tick_func)(CASK::Tickable*, Hart<__uint32_t>*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
+typedef unsigned int (*tick_func)(Hart<__uint32_t>*, CASK::CoreLocalInterruptor*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
 
 template<unsigned int TickerHash>
 constexpr std::array<tick_func, 32> add_tickers(std::array<tick_func, 32> arr) {
@@ -394,10 +396,6 @@ int main(int argc, char **argv) {
     CASK::CoreLocalInterruptor clint;
     bus.AddIOTarget32(&clint, 0x02000000, 0xfffff);
 
-    CASK::Schedule sched;
-    sched.AddTickable(hart);
-    sched.AddTickable(&clint);
-
     const __uint32_t shutdownEvent = 0x0D15EA5E;
 
     CASK::PowerButton powerButton(&eq, shutdownEvent);
@@ -453,7 +451,8 @@ int main(int argc, char **argv) {
     hart->resetVector = elf.elfHeader.e_entry;
     hart->Reset();
 
-    sched.BeforeFirstTick();
+    hart->BeforeFirstTick();
+    clint.BeforeFirstTick();
 
     // TODO make a bytes file loader class - also this is naive and non-optimal
     if (!dtb_filename.empty()) {
@@ -491,7 +490,7 @@ int main(int argc, char **argv) {
     tick_func tick = tickers[tick_hash];
 
     auto begin = std::chrono::high_resolution_clock::now();
-    event = tick(&sched, hart, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+    event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
     auto end = std::chrono::high_resolution_clock::now();
 
     if (print_summary) {
