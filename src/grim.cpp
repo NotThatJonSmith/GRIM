@@ -17,7 +17,6 @@
 #include <UART.hpp>
 #include <SimpleHart.hpp>
 #include <OptimizedHart.hpp>
-#include <ThreadedHart.hpp>
 
 __uint64_t MaskForSize(__uint64_t size) {
     if (size > (__uint64_t)1 << 63) // TODO this assumes Address is 64 bit
@@ -196,18 +195,12 @@ void PrintState(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned 
 
     if constexpr (print_disasm) {
         (*out) << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-               << state->currentFetch->virtualPC << ":\t"
+               << state->pc << ":\t"
                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-               << state->currentFetch->encoding << "\t"
+               << state->inst << "\t"
                << std::dec;
-        decode_instruction<__uint32_t, &std::cout>( // Actually, using constexpr ostream ptr is bad hackery.
-            state->currentFetch->encoding,
-            state->misa.extensions,
-            state->misa.mxlen)(
-                state->currentFetch->encoding,
-                nullptr,
-                nullptr
-            );
+        // Actually, using constexpr ostream ptr is bad hackery.
+        decode_instruction<__uint32_t, &std::cout>(state->inst, state->misa.extensions, state->misa.mxlen)(state, nullptr);
     }
 
 }
@@ -367,12 +360,10 @@ int main(int argc, char **argv) {
             hartModel = Simple;
         } else if (hartModelName.compare("fast") == 0) {
             hartModel = Fast;
-        } else if (hartModelName.compare("threaded") == 0) {
-            hartModel = Threaded;
         } else {
             std::cerr << "Warning: ignoring invalid --model argument "
-                      << "\"" << hartModelName << "\". Valid choice are "
-                      << "(simple, fast, threaded)."
+                      << "\"" << hartModelName << "\". Valid choices are "
+                      << "(simple, fast)."
                       << std::endl;
         }
     }
@@ -393,10 +384,8 @@ int main(int argc, char **argv) {
     Hart<__uint32_t>* hart = nullptr;
     if (hartModel == Fast) {
         hart = new OptimizedHart<__uint32_t, 3, true>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
-    } else if (hartModel == Simple) {
-        hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     } else {
-        hart = new ThreadedHart<__uint32_t, 3, true, 16>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
 
     CASK::UART uart;
@@ -462,6 +451,7 @@ int main(int argc, char **argv) {
     }
 
     hart->resetVector = elf.elfHeader.e_entry;
+    hart->Reset();
 
     sched.BeforeFirstTick();
 
