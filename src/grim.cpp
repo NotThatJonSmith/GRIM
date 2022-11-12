@@ -220,10 +220,10 @@ __uint32_t tick_until(
 
     while (true) {
 
-        PrintState<__uint32_t, print_regs, print_disasm, print_details>(&hart->state, out, useRegAbiNames, 4);
-
-        for (unsigned int i = 0; i < 100; i++)
+        for (unsigned int i = 0; i < 100; i++) {
+            PrintState<__uint32_t, print_regs, print_disasm, print_details>(&hart->state, out, useRegAbiNames, 4);
             hart->Tick();
+        }
         clint->Tick();
 
         if (limit_cycles || check_events) {
@@ -385,7 +385,7 @@ int main(int argc, char **argv) {
 
     Hart<__uint32_t>* hart = nullptr;
     if (hartModel == Fast) {
-        hart = new OptimizedHart<__uint32_t, 8, true>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        hart = new OptimizedHart<__uint32_t, 8, true, 32, 64>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
