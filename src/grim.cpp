@@ -385,7 +385,7 @@ int main(int argc, char **argv) {
 
     Hart<__uint32_t>* hart = nullptr;
     if (hartModel == Fast) {
-        hart = new OptimizedHart<__uint32_t, 8, true, 64, 32, 8>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        hart = new OptimizedHart<__uint32_t, 8, true, 32, 8>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
