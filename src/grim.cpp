@@ -196,10 +196,11 @@ void PrintState(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned 
         (*out) << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
                << state->pc << ":\t"
                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-               << state->inst << "\t"
+               << "state->encoded_instruction is gone, TODO!" << "\t"
+            //    << state->encoded_instruction << "\t"
                << std::dec;
         // Actually, using constexpr ostream ptr is bad hackery.
-        decode_instruction<__uint32_t, &std::cout>(state->inst, state->misa.extensions, state->misa.mxlen)(state, nullptr);
+        // decode_instruction<__uint32_t, &std::cout>(state->encoded_instruction, state->misa.extensions, state->misa.mxlen)(state, nullptr);
     }
 
 }
