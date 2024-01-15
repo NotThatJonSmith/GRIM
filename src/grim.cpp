@@ -17,6 +17,8 @@
 #include <SimpleHart.hpp>
 #include <OptimizedHart.hpp>
 
+#include <PrintStates.hpp>
+
 __uint64_t MaskForSize(__uint64_t size) {
     if (size > (__uint64_t)1 << 63) // TODO this assumes Address is 64 bit
         return ~(__uint64_t)0;
@@ -25,186 +27,11 @@ __uint64_t MaskForSize(__uint64_t size) {
     return nextPo2 - 1;
 }
 
-template<typename XLEN_t>
-void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
-    (*out) << "Details:" << std::endl;
-    (*out) << "| misa: rv" << RISCV::xlenModeName(state->misa.mxlen)
-           << RISCV::extensionsToString(state->misa.extensions)
-           << std::endl;
-    (*out) << "| Privilege=" << RISCV::privilegeModeName(state->privilegeMode)
-           << std::endl;
-    (*out) << "| mstatus: "
-           << "mprv=" << (state->mstatus.mprv ? "1 " : "0 ")
-           << "sum=" << (state->mstatus.sum ? "1 " : "0 ")
-           << "tvm=" << (state->mstatus.tvm ? "1 " : "0 ")
-           << "tw=" << (state->mstatus.tw ? "1 " : "0 ")
-           << "tsr=" << (state->mstatus.tsr ? "1 " : "0 ")
-           << "sd=" << (state->mstatus.sd ? "1 " : "0 ")
-           << std::endl << "| "
-           << "fs=" << RISCV::floatingPointStateName(state->mstatus.fs)
-           << " xs= " << RISCV::extensionStateName(state->mstatus.xs)
-           << " sxl=" << RISCV::xlenModeName(state->mstatus.sxl)
-           << " uxl=" << RISCV::xlenModeName(state->mstatus.uxl)
-           << std::endl << "| "
-           << " mie=" << (state->mstatus.mie ? "1" : "0")
-           << " mpie=" << (state->mstatus.mpie ? "1" : "0")
-           << " mpp=" << RISCV::privilegeModeName(state->mstatus.mpp)
-           << " sie=" << (state->mstatus.sie ? "1" : "0")
-           << " spie=" << (state->mstatus.spie ? "1" : "0")
-           << " spp=" << RISCV::privilegeModeName(state->mstatus.spp)
-           << " uie=" << (state->mstatus.uie ? "1" : "0")
-           << " upie=" << (state->mstatus.upie ? "1" : "0")
-           << std::endl;
-    (*out) << "| satp: mode=" << RISCV::pagingModeName(state->satp.pagingMode)
-           << ", ppn=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->satp.ppn << ", asid=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->satp.asid
-           << std::endl;
-    (*out) << "| mie=[ "
-           << (state->mie.mei ? "mei " : "")
-           << (state->mie.msi ? "msi " : "")
-           << (state->mie.mti ? "mti " : "")
-           << (state->mie.sei ? "sei " : "")
-           << (state->mie.ssi ? "ssi " : "")
-           << (state->mie.sti ? "sti " : "")
-           << (state->mie.uei ? "uei " : "")
-           << (state->mie.usi ? "usi " : "")
-           << (state->mie.uti ? "uti " : "")
-           << "] mip=[ "
-           << (state->mip.mei ? (!state->mie.mei ? "*mei " : "mei ") : "")
-           << (state->mip.msi ? (!state->mie.msi ? "*msi " : "msi ") : "")
-           << (state->mip.mti ? (!state->mie.mti ? "*mti " : "mti ") : "")
-           << (state->mip.sei ? (!state->mie.sei ? "*sei " : "sei ") : "")
-           << (state->mip.ssi ? (!state->mie.ssi ? "*ssi " : "ssi ") : "")
-           << (state->mip.sti ? (!state->mie.sti ? "*sti " : "sti ") : "")
-           << (state->mip.uei ? (!state->mie.uei ? "*uei " : "uei ") : "")
-           << (state->mip.usi ? (!state->mie.usi ? "*usi " : "usi ") : "")
-           << (state->mip.uti ? (!state->mie.uti ? "*uti " : "uti ") : "")
-           << "]" << std::endl;
-    (*out) << "| mideleg=[ "
-           << ((state->mideleg & RISCV::meiMask) ? "mei " : "")
-           << ((state->mideleg & RISCV::msiMask) ? "msi " : "")
-           << ((state->mideleg & RISCV::mtiMask) ? "mti " : "")
-           << ((state->mideleg & RISCV::seiMask) ? "sei " : "")
-           << ((state->mideleg & RISCV::ssiMask) ? "ssi " : "")
-           << ((state->mideleg & RISCV::stiMask) ? "sti " : "")
-           << ((state->mideleg & RISCV::ueiMask) ? "uei " : "")
-           << ((state->mideleg & RISCV::usiMask) ? "usi " : "")
-           << ((state->mideleg & RISCV::utiMask) ? "uti " : "")
-           << "] sideleg=[ "
-           << ((state->sideleg & RISCV::meiMask) ? "mei " : "")
-           << ((state->sideleg & RISCV::msiMask) ? "msi " : "")
-           << ((state->sideleg & RISCV::mtiMask) ? "mti " : "")
-           << ((state->sideleg & RISCV::seiMask) ? "sei " : "")
-           << ((state->sideleg & RISCV::ssiMask) ? "ssi " : "")
-           << ((state->sideleg & RISCV::stiMask) ? "sti " : "")
-           << ((state->sideleg & RISCV::ueiMask) ? "uei " : "")
-           << ((state->sideleg & RISCV::usiMask) ? "usi " : "")
-           << ((state->sideleg & RISCV::utiMask) ? "uti " : "")
-           << "]" << std::endl;
-    (*out) << "| medeleg=[ "
-           << "TODO "
-           << "] sedeleg=[ "
-           << "TODO "
-           << "]" << std::endl;
-    (*out) << "| mtval=0x"
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->mtval;
-    (*out) << " mscratch=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->mscratch;
-    (*out) << " mepc=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->mepc
-           << std::endl;
-    (*out) << "| mtvec=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->mtvec.base
-           << " (" << RISCV::tvecModeName(state->mtvec.mode) << ")"
-           << " mcause=" << RISCV::trapName(state->mcause.interrupt, state->mcause.exceptionCode)
-           << std::endl;
-    (*out) << "| stval=0x"
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->stval;
-    (*out) << " sscratch=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->sscratch;
-    (*out) << " sepc=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->sepc
-           << std::endl;
-    (*out) << "| stvec=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->stvec.base
-           << " (" << RISCV::tvecModeName(state->stvec.mode) << ")"
-           << " scause=" << RISCV::trapName(state->scause.interrupt, state->scause.exceptionCode)
-           << std::endl;
-    (*out) << "| utval=0x"
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->utval;
-    (*out) << " uscratch=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->uscratch;
-    (*out) << " uepc=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->uepc
-           << std::endl;
-    (*out) << "| utvec=0x" 
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->utvec.base
-           << " (" << RISCV::tvecModeName(state->utvec.mode) << ")"
-           << " ucause=" << RISCV::trapName(state->ucause.interrupt, state->ucause.exceptionCode)
-           << std::endl;
-    // TODO FP state
-    // TODO counters and events
-    // TODO PMP
-}
-
-template<typename XLEN_t>
-void PrintRegisters(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsigned int regsPerLine) {
-    (*out) << "Registers:" << std::endl;
-    for (unsigned int i = 0; i < 32; i++) {
-        if (i % regsPerLine == 0) {
-            (*out) << "| ";
-        }
-        if (abi) {
-            (*out) << std::setfill(' ') << std::setw(4)
-                << RISCV::registerAbiNames[i] << ": "
-                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-                << state->regs[i];
-        } else {
-            (*out) << std::dec << std::setfill(' ') << std::setw(2) << i << ": "
-                << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-                << state->regs[i];
-        }
-        if ((i+1) % regsPerLine == 0) {
-            std::cout << std::endl;
-        } else {
-            std::cout << "  ";
-        }
-    }
-}
-
-template<typename XLEN_t>
-void PrintInstruction(HartState<XLEN_t>* state, Transactor<XLEN_t>* vaTransactor, std::ostream* out) {
-    __uint32_t encodedInstruction = 0;
-    vaTransactor->Fetch(state->pc, 4, (char*)&encodedInstruction);
-    (*out) << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->pc << ":\t"
-           << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << encodedInstruction << "\t"
-           << std::dec;
-    Instruction<XLEN_t> instr = decode_instruction<__uint32_t>(encodedInstruction, state->misa.extensions, state->misa.mxlen);
-    instr.disassemblyFunction(encodedInstruction, out);
-}
-
 // Note: These parameters could be constexpr-if'd but that breaks pedantry, and
 //       the compiler does the right thing in O3.
-template <bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details>
-__uint32_t tick_until(
-        Hart<__uint32_t> *hart,
+template <typename MXLEN_t, bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details>
+unsigned int tick_until(
+        Hart<MXLEN_t> *hart,
         CASK::CoreLocalInterruptor* clint,
         CASK::EventQueue *eq,
         std::ostream *out,
@@ -216,18 +43,18 @@ __uint32_t tick_until(
     while (true) {
 
         if constexpr (print_details) {
-            PrintArchDetails<__uint32_t>(&hart->state, out);
+            PrintArchDetails<MXLEN_t>(&hart->state, out);
         }
 
         if constexpr (print_regs) {
-            PrintRegisters<__uint32_t>(&hart->state, out, useRegAbiNames, 4);
+            PrintRegisters<MXLEN_t>(&hart->state, out, useRegAbiNames, 4);
         }
 
         if constexpr (print_disasm) {
-            PrintInstruction<__uint32_t>(&hart->state, hart->getVATransactor(), out);
+            PrintInstruction<MXLEN_t>(&hart->state, hart->getVATransactor(), out);
         }
 
-        if (limit_cycles || check_events) {
+        if constexpr (limit_cycles || check_events) {
             (*ticks) += hart->Tick();
         } else {
             hart->Tick();
@@ -235,7 +62,7 @@ __uint32_t tick_until(
 
         clint->Tick();
 
-        if (check_events) {
+        if constexpr (check_events) {
             // TODO BUG, this is not a good check anymore because the hart Tick can pass many cycles
             // TODO ServiceInterrupts about here? Clint scheduled here?
             if ((*ticks) % event_check_freq == 0) {
@@ -245,7 +72,7 @@ __uint32_t tick_until(
             }
         }
 
-        if (limit_cycles) {
+        if constexpr (limit_cycles) {
             if ((*ticks) > cycle_limit) {
                 return 0;
             }
@@ -253,29 +80,30 @@ __uint32_t tick_until(
     }
 }
 
-typedef unsigned int (*tick_func)(Hart<__uint32_t>*, CASK::CoreLocalInterruptor*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
+template <typename MXLEN_t>
+using tick_func = unsigned int (*)(Hart<MXLEN_t>*, CASK::CoreLocalInterruptor*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
 
-template<unsigned int TickerHash>
-constexpr std::array<tick_func, 32> add_tickers(std::array<tick_func, 32> arr) {
+
+template<typename MXLEN_t, unsigned int TickerHash>
+constexpr std::array<tick_func<MXLEN_t>, 32> add_tickers(std::array<tick_func<MXLEN_t>, 32> arr) {
     if constexpr (TickerHash < 32) {
         constexpr bool limit_cycles  = TickerHash & 0b10000;
         constexpr bool check_events  = TickerHash & 0b01000;
         constexpr bool print_regs    = TickerHash & 0b00100;
         constexpr bool print_disasm  = TickerHash & 0b00010;
         constexpr bool print_details = TickerHash & 0b00001;
-        arr[TickerHash] = tick_until<limit_cycles, check_events, print_regs, print_disasm, print_details>;
-        return add_tickers<TickerHash + 1>(arr);
+        arr[TickerHash] = tick_until<MXLEN_t, limit_cycles, check_events, print_regs, print_disasm, print_details>;
+        return add_tickers<MXLEN_t, TickerHash + 1>(arr);
     }
     return arr;
 }
 
-constexpr std::array<tick_func, 32> gen_tickers() {
-    std::array<tick_func, 32> result = {0};
-    result = add_tickers<0>(result);
+template <typename MXLEN_t>
+constexpr std::array<tick_func<MXLEN_t>, 32> gen_tickers() {
+    std::array<tick_func<MXLEN_t>, 32> result = {0};
+    result = add_tickers<MXLEN_t, 0>(result);
     return result;
 }
-
-constexpr std::array<tick_func, 32> tickers = gen_tickers();
 
 constexpr unsigned int hash_tick_params(bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details) {
     return (limit_cycles  ? 0b10000 : 0b00000) |
@@ -285,25 +113,8 @@ constexpr unsigned int hash_tick_params(bool limit_cycles, bool check_events, bo
            (print_details ? 0b00001 : 0b00000);
 }
 
-int main(int argc, char **argv) {
-
-    // -- Parse Arguments --
-
-    cxxopts::Options options("grim", "Generic RISC-V Interpretive Machine");
-    options.add_options()
-    ("m,model", "Name of the hart model to use, one of (simple, fast, threaded)", cxxopts::value<std::string>())
-    ("d,dtb", "Name of the Device Tree Blob file describing the platform", cxxopts::value<std::string>())
-    ("f,fast", "Use the fast, risky model instead of the slow, sure model")
-    ("k,kernel", "Name of the ELF executable to load into the simulation", cxxopts::value<std::string>())
-    ("a,args", "Argument string returned by getmainvars system call", cxxopts::value<std::string>())
-    ("r,root", "Host directory to serve as the simulated file system's root", cxxopts::value<std::string>())
-    ("c,cycles", "Number of cycles to run, 0 for unlimited", cxxopts::value<unsigned int>())
-    ("e,check-events-every", "Number of cycles between checking the event queue", cxxopts::value<unsigned int>())
-    ("p,print", "String matching /[drtcms]*/ for [d]isassembly, [r]egisters, [t]iming, system [c]alls, [m]emory transcations and a final [s]ummary", cxxopts::value<std::string>())
-    ("h,help", "Print help message");
-
-    auto parsed_arguments = options.parse(argc, argv);
-
+template <typename MXLEN_t>
+void run_simulation(cxxopts::ParseResult parsed_arguments) {
     bool useRegAbiNames = true;
 
     std::string arg_string = "";
@@ -333,14 +144,9 @@ int main(int argc, char **argv) {
     bool print_syscalls = print_flags.find('c') != std::string::npos;
     bool print_mem = print_flags.find('m') != std::string::npos;
 
-    if (parsed_arguments.count("help")) {
-        std::cout << options.help() << std::endl;
-        return 0;
-    }
-
     if (!parsed_arguments.count("kernel")) {
-        std::cerr << "Warning: No kernel image provided." << std::endl;
-        return 0;
+        std::cerr << "Fatal: No kernel image provided. Nonsense run - nothing would be loaded into memory!" << std::endl;
+        return;
     }
 
     std::string elfFileName = parsed_arguments["kernel"].as<std::string>();
@@ -389,11 +195,11 @@ int main(int argc, char **argv) {
     CASK::MappedPhysicalMemory mem;
     bus.AddIOTarget32(&mem, 0, 0xffffffff);
 
-    Hart<__uint32_t>* hart = nullptr;
+    Hart<MXLEN_t>* hart = nullptr;
     if (hartModel == Fast) {
-        hart = new OptimizedHart<__uint32_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
     } else {
-        hart = new SimpleHart<__uint32_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
+        hart = new SimpleHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
 
     CASK::UART uart;
@@ -466,8 +272,8 @@ int main(int argc, char **argv) {
         std::ifstream dtbIfStream;
         dtbIfStream.open(dtb_filename, std::ios::in | std::ios::binary);
         if (!dtbIfStream.is_open()) {
-            std::cerr << "Can't open DTB file "+dtb_filename;
-            return 0;
+            std::cerr << "Fatal: Given a DTB file I can't open: "+dtb_filename;
+            return;
         }
 
         dtbIfStream.seekg(0, std::ios::end);
@@ -492,8 +298,9 @@ int main(int argc, char **argv) {
     unsigned int ticks = 0;
     unsigned int event = 0;
 
+    constexpr std::array<tick_func<MXLEN_t>, 32> tickers = gen_tickers<MXLEN_t>();
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm, print_details);
-    tick_func tick = tickers[tick_hash];
+    tick_func<MXLEN_t> tick = tickers[tick_hash];
 
     auto begin = std::chrono::high_resolution_clock::now();
     event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
@@ -511,8 +318,8 @@ int main(int argc, char **argv) {
         }
 
         std::cout << "Final hart state:" << std::endl;
-        PrintArchDetails<__uint32_t>(&hart->state, &std::cout);
-        PrintRegisters<__uint32_t>(&hart->state, &std::cout, useRegAbiNames, 4);
+        PrintArchDetails<MXLEN_t>(&hart->state, &std::cout);
+        PrintRegisters<MXLEN_t>(&hart->state, &std::cout, useRegAbiNames, 4);
         std::cout << std::endl;
 
     }
@@ -529,6 +336,49 @@ int main(int argc, char **argv) {
         std::cout << "Run time: " << std::dec << seconds << "s" << std::endl;
         std::cout << "MIPS: " << mips << std::endl;
     }
+}
 
-    return 0;
+int main(int argc, char **argv) {
+
+    // -- Parse Arguments --
+
+    cxxopts::Options options("grim", "Generic RISC-V Interpretive Machine");
+    options.add_options()
+    ("x,mxlen", "Machine-mode system width, MXLEN, one of (32, 64, 128)", cxxopts::value<std::string>())
+    ("m,model", "Name of the hart model to use, one of (simple, fast, threaded)", cxxopts::value<std::string>())
+    ("d,dtb", "Name of the Device Tree Blob file describing the platform", cxxopts::value<std::string>())
+    ("k,kernel", "Name of the ELF executable to load into the simulation", cxxopts::value<std::string>())
+    ("a,args", "Argument string returned by getmainvars system call", cxxopts::value<std::string>())
+    ("r,root", "Host directory to serve as the simulated file system's root", cxxopts::value<std::string>())
+    ("c,cycles", "Number of cycles to run, 0 for unlimited", cxxopts::value<unsigned int>())
+    ("e,check-events-every", "Number of cycles between checking the event queue", cxxopts::value<unsigned int>())
+    ("p,print", "String matching /[drtcms]*/ for [d]isassembly, [r]egisters, [t]iming, system [c]alls, [m]emory transcations and a final [s]ummary", cxxopts::value<std::string>())
+    ("h,help", "Print help message");
+
+    cxxopts::ParseResult parsed_arguments = options.parse(argc, argv);
+
+    if (parsed_arguments.count("help")) {
+        std::cout << options.help() << std::endl;
+        return 0;
+    }
+
+    if (parsed_arguments.count("mxlen")) {
+        std::string xlenArgString = parsed_arguments["mxlen"].as<std::string>();
+        RISCV::XlenMode mxlen = RISCV::xlenNameToMode(xlenArgString);
+        switch (mxlen) {
+        case RISCV::XlenMode::XL32: run_simulation<__uint32_t>(parsed_arguments); break;
+        case RISCV::XlenMode::XL64: run_simulation<__uint64_t>(parsed_arguments); break;
+        case RISCV::XlenMode::XL128: run_simulation<__uint128_t>(parsed_arguments); break;
+        case RISCV::XlenMode::None:
+        default:
+            std::cerr << "Fatal: nonsense --mxlen argument "
+                      << "\"" << xlenArgString << "\". Valid choices are "
+                      << "(32, 64, 128)."
+                      << std::endl;
+            break;
+        }
+    } else {
+        std::cerr << "Warning: no --mxlen argument, assuming 32." << std::endl;
+        run_simulation<__uint32_t>(parsed_arguments);
+    }
 }

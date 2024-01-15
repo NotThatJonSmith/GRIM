@@ -19,7 +19,7 @@ for line in dump_file:
         func_name = m.group(2)
         addr2func[addr] = func_name
 
-    m = re.match(r"([A-Fa-f0-9]+):\s+([A-Fa-f0-9]+)(.*)", line)
+    m = re.match(r"\s*([A-Fa-f0-9]+):\s+([A-Fa-f0-9]+)(.*)", line)
 
     if m:
         addr = int(m.group(1), 16)
@@ -30,7 +30,7 @@ last_func = None
 for line in trace:
 
     line = line.strip()
-    m = re.match(r"([0-9a-f]{8}):.*", line)
+    m = re.match(r"([0-9a-f]+):.*", line)
     if not m:
         print(line)
         continue
@@ -57,11 +57,12 @@ for line in trace:
             last_func = func_name
 
     print(line,end="")
-    
     if addr in encoded_instructions.keys():
         print("\t\tfrom source: "+
               encoded_instructions[addr]+
             "\t"+source_instructions[addr],end="")
+    else:
+        print("\t\t from unknown source disasm",end="")
 
     print()
     
