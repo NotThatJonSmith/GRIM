@@ -22,7 +22,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
            << "sd=" << (state->mstatus.sd ? "1 " : "0 ")
            << std::endl << "| "
            << "fs=" << RISCV::floatingPointStateName(state->mstatus.fs)
-           << " xs= " << RISCV::extensionStateName(state->mstatus.xs)
+           << " xs=" << RISCV::extensionStateName(state->mstatus.xs)
            << " sxl=" << RISCV::xlenModeName(state->mstatus.sxl)
            << " uxl=" << RISCV::xlenModeName(state->mstatus.uxl)
            << std::endl << "| "
@@ -98,8 +98,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " mepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->mepc
-           << std::endl;
-    (*out) << "| mtvec=0x" 
+           << "| mtvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->mtvec.base
            << " (" << RISCV::tvecModeName(state->mtvec.mode) << ")"
@@ -114,8 +113,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " sepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->sepc
-           << std::endl;
-    (*out) << "| stvec=0x" 
+           << "| stvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->stvec.base
            << " (" << RISCV::tvecModeName(state->stvec.mode) << ")"
@@ -130,8 +128,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " uepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->uepc
-           << std::endl;
-    (*out) << "| utvec=0x" 
+           << "| utvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->utvec.base
            << " (" << RISCV::tvecModeName(state->utvec.mode) << ")"
