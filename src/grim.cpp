@@ -18,6 +18,7 @@
 #include <OptimizedHart.hpp>
 
 #include <PrintStates.hpp>
+#include <SignalTrappedMemory.hpp>
 
 __uint64_t MaskForSize(__uint64_t size) {
     if (size > (__uint64_t)1 << 63) // TODO this assumes Address is 64 bit
@@ -184,6 +185,10 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
 
     // -- System Construction --
 
+    bool use_sigsegv_hack = false;
+    if (parsed_arguments.count("bananas"))
+        use_sigsegv_hack = true;
+
     CASK::Bus bus;
     CASK::EventQueue eq;
 
@@ -193,27 +198,43 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     CASK::IOTarget *hartIOTarget = print_mem ? (CASK::IOTarget*)&iologger : (CASK::IOTarget*)&bus;
 
     CASK::MappedPhysicalMemory mem;
-    bus.AddIOTarget32(&mem, 0, 0xffffffff);
+
+    if (use_sigsegv_hack) {
+        set_up_signal_trapped_memory();
+        CASK::IOTarget *prev_target = hartIOTarget;
+        hartIOTarget = new CASK::SignalTrappedMemory(prev_target);
+    } else {
+        bus.AddIOTarget32((CASK::IOTarget*)&mem, 0, 0xffffffff);
+    }
 
     Hart<MXLEN_t>* hart = nullptr;
     if (hartModel == Fast) {
-        hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        if (!use_sigsegv_hack)
+            hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+        else
+            hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, hartIOTarget, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
 
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
+    if (use_sigsegv_hack)
+        make_device_hole(0x01000000, 0xfffff);
 
     CASK::CoreLocalInterruptor clint;
     bus.AddIOTarget32(&clint, 0x02000000, 0xfffff);
 
     const __uint32_t shutdownEvent = 0x0D15EA5E;
+    if (use_sigsegv_hack)
+        make_device_hole(0x02000000, 0xfffff);
 
     CASK::PowerButton powerButton(&eq, shutdownEvent);
     bus.AddIOTarget32(&powerButton, 0x01000010, 0xf);
+    if (use_sigsegv_hack)
+        make_device_hole(0x01000010, 0xf);
 
-    CASK::ProxyKernelServer pkServer(&bus, &eq, shutdownEvent);
+    CASK::ProxyKernelServer pkServer(hartIOTarget, &eq, shutdownEvent);
     pkServer.SetCommandLine(arg_string);
     pkServer.SetFSRoot(fs_root);
     if (print_syscalls) {
@@ -228,36 +249,46 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
         std::cout << "Failed to load ELF file into memory!" << std::endl;
     }
 
-    for (unsigned int sid = 0; sid < elf.elfHeader.e_shnum; sid++) {
-
-        if (elf.sections[sid].name.compare(".htif") == 0) {
-            __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
-            bus.AddIOTarget32(&pkServer, elf.sectionHeaders[sid].sh_addr, mask);
-            continue;
-        }
-
-        if (elf.sections[sid].name.compare(".tohost") == 0) {
-            __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
-            bus.AddIOTarget32(&toHost, elf.sectionHeaders[sid].sh_addr, mask);
-            continue;
-        }
-    }
-
     // -- Load the Kernel Image and Device Tree --
 
     for (unsigned int sid = 0; sid < elf.elfHeader.e_shnum; sid++) {
 
+        std::cout << "ELF section #" << sid << " named \"" << elf.sections[sid].name << "\"" << std::endl;
+
+        if (elf.sections[sid].name.compare(".htif") == 0) {
+            std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
+            __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
+            bus.AddIOTarget32(&pkServer, elf.sectionHeaders[sid].sh_addr, mask);
+            if (use_sigsegv_hack)
+                make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+        }
+
+        if (elf.sections[sid].name.compare(".tohost") == 0) {
+            std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
+            __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
+            bus.AddIOTarget32(&toHost, elf.sectionHeaders[sid].sh_addr, mask);
+            if (use_sigsegv_hack)
+                make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+        }
+
         if (elf.sectionHeaders[sid].sh_type == 8) {
+            std::cout << "    Not loaded, type is SH_NOBITS" << std::endl;
             continue;
         }
 
         if (elf.sectionHeaders[sid].sh_addr == 0) {
+            std::cout << "    Not loaded, section address is 0x0" << std::endl;
             continue;
         }
 
-        bus.Write32(elf.sectionHeaders[sid].sh_addr,
-                    elf.sectionHeaders[sid].sh_size,
-                    elf.sections[sid].bytes.data());
+        std::cout << "    Loading; size 0x"
+                  << std::setw(16) << std::setfill('0') << std::hex
+                  << elf.sectionHeaders[sid].sh_size << " at address 0x"
+                  << std::setw(16) << std::setfill('0') << std::hex
+                  << elf.sectionHeaders[sid].sh_addr << std::endl;
+        hartIOTarget->Write32(elf.sectionHeaders[sid].sh_addr,
+                              elf.sectionHeaders[sid].sh_size,
+                              elf.sections[sid].bytes.data());
     }
 
     hart->resetVector = elf.elfHeader.e_entry;
@@ -287,7 +318,11 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
 
         dtbIfStream.close();
 
-        bus.Write32(0xf0000000, size, bytes);
+        std::cout << "Writing device tree into memory"
+                  << " size 0x" << std::setw(16) << std::setfill('0') << std::hex << size
+                  << " at address 0x" << std::setw(16) << std::setfill('0') << std::hex << 0xf0000000
+                  << std::endl;
+        hartIOTarget->Write32(0xf0000000, size, bytes);
         delete[] bytes;
 
         hart->state.regs[11] = 0xf0000000;
@@ -353,6 +388,7 @@ int main(int argc, char **argv) {
     ("c,cycles", "Number of cycles to run, 0 for unlimited", cxxopts::value<unsigned int>())
     ("e,check-events-every", "Number of cycles between checking the event queue", cxxopts::value<unsigned int>())
     ("p,print", "String matching /[drtcms]*/ for [d]isassembly, [r]egisters, [t]iming, system [c]alls, [m]emory transcations and a final [s]ummary", cxxopts::value<std::string>())
+    ("bananas", "Use a crazy hack where we trap sigsegv to make memory faster")
     ("h,help", "Print help message");
 
     cxxopts::ParseResult parsed_arguments = options.parse(argc, argv);
