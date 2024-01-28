@@ -189,6 +189,12 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     if (parsed_arguments.count("bananas"))
         use_sigsegv_hack = true;
 
+    if (use_sigsegv_hack)
+    {
+        std::cerr << "Fatal: Banana bus mode is known to be incomplete; BKM slows the hart down and the fix is a lot of work!" << std::endl;
+        return;
+    }
+
     CASK::Bus bus;
     CASK::EventQueue eq;
 
@@ -201,8 +207,7 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
 
     if (use_sigsegv_hack) {
         set_up_signal_trapped_memory();
-        CASK::IOTarget *prev_target = hartIOTarget;
-        hartIOTarget = new CASK::SignalTrappedMemory(prev_target);
+        hartIOTarget = new CASK::SignalTrappedMemory();
     } else {
         bus.AddIOTarget32((CASK::IOTarget*)&mem, 0, 0xffffffff);
     }
@@ -338,7 +343,29 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     tick_func<MXLEN_t> tick = tickers[tick_hash];
 
     auto begin = std::chrono::high_resolution_clock::now();
-    event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+    if (use_sigsegv_hack) {
+        while (true) {
+            if (sigsetjmp(jbuf, ~0) == 0) [[likely]] {
+                // Do as much ticking as we possibly can
+                event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+                break;
+            } else {
+                // Used to set up stack context to return to every transaction so we could just retry that one
+                // transaction. Saving the context every time is costly and I didn't know it was necessary until I tried
+                // to do segfault-recovery. The new idea is to fault back all the way to outside the ticker.
+                // This is where that fault ends up - at this point, we know we segfaulted during the previous tick()!
+                // We need to re-run the tick that caused the banana-bus to fall apart, with the "safe" bus.
+                // A problem is that we're in a state where we've run "some of an instruction" and then SIGSEGV'd here.
+                // What we can do is take a copy of the (public) HartState every so often.
+                // Then, we install it back into the hart we're running, and swap out its bus (need to add that API)
+                // Then, we can re-run it's CASK-Tick function directly. Then re-swap to the fast stuff, and continue
+                // out of the loop.
+                continue;
+            }
+        }
+    } else {
+        event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+    }
     auto end = std::chrono::high_resolution_clock::now();
 
     if (print_summary) {

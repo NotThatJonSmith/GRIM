@@ -60,10 +60,6 @@ class SignalTrappedMemory final : public IOTarget {
 
 public:
 
-    SignalTrappedMemory(IOTarget* fallbackTarget) {
-        fallbackIOTarget = fallbackTarget;
-    }
-
     virtual __uint32_t Read32(__uint32_t startAddress, __uint32_t size, char* buf) override { return TransactInternal<__uint32_t, AccessType::R>(startAddress, size, buf); }
     virtual __uint64_t Read64(__uint64_t startAddress, __uint64_t size, char* buf) override { return TransactInternal<__uint64_t, AccessType::R>(startAddress, size, buf); }
     virtual __uint128_t Read128(__uint128_t startAddress, __uint128_t size, char* buf) override { return TransactInternal<__uint128_t, AccessType::R>(startAddress, size, buf); }
@@ -76,22 +72,16 @@ public:
 
 private:
 
-    IOTarget* fallbackIOTarget;
-
     template <typename T, AccessType accessType>
     inline T TransactInternal(T startAddress, T size, char* buf) {
-        if (sigsetjmp(jbuf, ~0) == 0) [[likely]] {
-            if constexpr (accessType != AccessType::W) {
-                // if constexpr (sizeof(T) <= 8)
-                //     printf("R HA=0x%016llx size 0x%016llx\n", (__uint64_t)arena+startAddress, (__uint64_t)size);
-                memcpy(buf, arena+startAddress, size);
-            } else {
-                // if constexpr (sizeof(T) <= 8)
-                //     printf("W HA=0x%016llx size 0x%016llx\n", (__uint64_t)arena+startAddress, (__uint64_t)size);
-                memcpy(arena+startAddress, buf, size);
-            }
+        if constexpr (accessType != AccessType::W) {
+            // if constexpr (sizeof(T) <= 8)
+            //     printf("R HA=0x%016llx size 0x%016llx\n", (__uint64_t)arena+startAddress, (__uint64_t)size);
+            memcpy(buf, arena+startAddress, size);
         } else {
-            fallbackIOTarget->template Transact<T, accessType>(startAddress, size, buf);
+            // if constexpr (sizeof(T) <= 8)
+            //     printf("W HA=0x%016llx size 0x%016llx\n", (__uint64_t)arena+startAddress, (__uint64_t)size);
+            memcpy(arena+startAddress, buf, size);
         }
         return size;
     }
