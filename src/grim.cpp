@@ -205,39 +205,40 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
 
     CASK::MappedPhysicalMemory mem;
 
-    if (use_sigsegv_hack) {
-        set_up_signal_trapped_memory();
-        hartIOTarget = new CASK::SignalTrappedMemory();
-    } else {
+    // if (use_sigsegv_hack) {
+    //     set_up_signal_trapped_memory();
+    //     hartIOTarget = new CASK::SignalTrappedMemory();
+    // } else {
         bus.AddIOTarget32((CASK::IOTarget*)&mem, 0, 0xffffffff);
-    }
+    // }
 
     Hart<MXLEN_t>* hart = nullptr;
     if (hartModel == Fast) {
-        if (!use_sigsegv_hack)
+        // By not having actual dynamism in the pointers we pass in, we seem to pick up a lot of speed.
+        // if (!use_sigsegv_hack)
             hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
-        else
-            hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, hartIOTarget, RISCV::stringToExtensions("imacsu"));
+        // else
+        //     hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, hartIOTarget, RISCV::stringToExtensions("imacsu"));
     } else {
         hart = new SimpleHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
     }
 
     CASK::UART uart;
     bus.AddIOTarget32(&uart, 0x01000000, 0xf);
-    if (use_sigsegv_hack)
-        make_device_hole(0x01000000, 0xfffff);
+    // if (use_sigsegv_hack)
+    //     make_device_hole(0x01000000, 0xfffff);
 
     CASK::CoreLocalInterruptor clint;
     bus.AddIOTarget32(&clint, 0x02000000, 0xfffff);
 
     const __uint32_t shutdownEvent = 0x0D15EA5E;
-    if (use_sigsegv_hack)
-        make_device_hole(0x02000000, 0xfffff);
+    // if (use_sigsegv_hack)
+    //     make_device_hole(0x02000000, 0xfffff);
 
     CASK::PowerButton powerButton(&eq, shutdownEvent);
     bus.AddIOTarget32(&powerButton, 0x01000010, 0xf);
-    if (use_sigsegv_hack)
-        make_device_hole(0x01000010, 0xf);
+    // if (use_sigsegv_hack)
+    //     make_device_hole(0x01000010, 0xf);
 
     CASK::ProxyKernelServer pkServer(hartIOTarget, &eq, shutdownEvent);
     pkServer.SetCommandLine(arg_string);
@@ -264,16 +265,16 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
             std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
             __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
             bus.AddIOTarget32(&pkServer, elf.sectionHeaders[sid].sh_addr, mask);
-            if (use_sigsegv_hack)
-                make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+            // if (use_sigsegv_hack)
+            //     make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
         }
 
         if (elf.sections[sid].name.compare(".tohost") == 0) {
             std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
             __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
             bus.AddIOTarget32(&toHost, elf.sectionHeaders[sid].sh_addr, mask);
-            if (use_sigsegv_hack)
-                make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+            // if (use_sigsegv_hack)
+            //     make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
         }
 
         if (elf.sectionHeaders[sid].sh_type == 8) {
@@ -342,30 +343,31 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm, print_details);
     tick_func<MXLEN_t> tick = tickers[tick_hash];
 
+    // if (use_sigsegv_hack) {
+    //     while (true) {
+    //         if (sigsetjmp(jbuf, ~0) == 0) [[likely]] {
+    //             // Do as much ticking as we possibly can
+    //             event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+    //             break;
+    //         } else {
+    //             // Used to set up stack context to return to every transaction so we could just retry that one
+    //             // transaction. Saving the context every time is costly and I didn't know it was necessary until I tried
+    //             // to do segfault-recovery. The new idea is to fault back all the way to outside the ticker.
+    //             // This is where that fault ends up - at this point, we know we segfaulted during the previous tick()!
+    //             // We need to re-run the tick that caused the banana-bus to fall apart, with the "safe" bus.
+    //             // A problem is that we're in a state where we've run "some of an instruction" and then SIGSEGV'd here.
+    //             // What we can do is take a copy of the (public) HartState every so often.
+    //             // Then, we install it back into the hart we're running, and swap out its bus (need to add that API)
+    //             // Then, we can re-run it's CASK-Tick function directly. Then re-swap to the fast stuff, and continue
+    //             // out of the loop.
+    //             continue;
+    //         }
+    //     }
+    // } else {
+    //     event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
+    // }
     auto begin = std::chrono::high_resolution_clock::now();
-    if (use_sigsegv_hack) {
-        while (true) {
-            if (sigsetjmp(jbuf, ~0) == 0) [[likely]] {
-                // Do as much ticking as we possibly can
-                event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-                break;
-            } else {
-                // Used to set up stack context to return to every transaction so we could just retry that one
-                // transaction. Saving the context every time is costly and I didn't know it was necessary until I tried
-                // to do segfault-recovery. The new idea is to fault back all the way to outside the ticker.
-                // This is where that fault ends up - at this point, we know we segfaulted during the previous tick()!
-                // We need to re-run the tick that caused the banana-bus to fall apart, with the "safe" bus.
-                // A problem is that we're in a state where we've run "some of an instruction" and then SIGSEGV'd here.
-                // What we can do is take a copy of the (public) HartState every so often.
-                // Then, we install it back into the hart we're running, and swap out its bus (need to add that API)
-                // Then, we can re-run it's CASK-Tick function directly. Then re-swap to the fast stuff, and continue
-                // out of the loop.
-                continue;
-            }
-        }
-    } else {
-        event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-    }
+    event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
     auto end = std::chrono::high_resolution_clock::now();
 
     if (print_summary) {
