@@ -1,18 +1,9 @@
 name: GRIM
 apps:
-    - src/grim.cpp
+    - grim.cpp
 build-static-lib: false
 build-shared-lib: false
 dependencies:
-    - name: HartModels
-      url: https://github.com/NotThatJonSmith/HartModels.git
-      checkout: main
-    - name: CASK-Proxy-Platform
-      url: https://github.com/NotThatJonSmith/CASK-Proxy-Platform.git
-      checkout: main
-    - name: CASK-Devices
-      url: https://github.com/NotThatJonSmith/CASK-Devices.git
-      checkout: main
     - name: HighELF
       url: https://github.com/NotThatJonSmith/HighELF.git
       checkout: main
@@ -25,4 +16,5 @@ dependencies:
 private-header-paths:
     - include
 public-header-paths: []
-source-globs: []
+source-globs:
+  - src/*

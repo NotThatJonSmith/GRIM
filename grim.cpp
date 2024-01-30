@@ -6,19 +6,20 @@
 #include <ElfFile.hpp>
 #include <RiscVDecoder.hpp>
 
-#include <Bus.hpp>
-#include <IOLogger.hpp>
-#include <MappedPhysicalMemory.hpp>
-#include <CoreLocalInterruptor.hpp>
-#include <PowerButton.hpp>
-#include <ProxyKernelServer.hpp>
-#include <ToHostInstrument.hpp>
-#include <UART.hpp>
+#include <IOTargets/Bus.hpp>
+#include <IOTargets/IOLogger.hpp>
+#include <IOTargets/MappedPhysicalMemory.hpp>
+#include <IOTargets/CoreLocalInterruptor.hpp>
+#include <IOTargets/PowerButton.hpp>
+#include <IOTargets/ProxyKernelServer.hpp>
+#include <IOTargets/ToHostInstrument.hpp>
+#include <IOTargets/UART.hpp>
+#include <IOTargets/SignalTrappedMemory.hpp>
+
 #include <SimpleHart.hpp>
 #include <OptimizedHart.hpp>
 
 #include <PrintStates.hpp>
-#include <SignalTrappedMemory.hpp>
 
 __uint64_t MaskForSize(__uint64_t size) {
     if (size > (__uint64_t)1 << 63) // TODO this assumes Address is 64 bit
