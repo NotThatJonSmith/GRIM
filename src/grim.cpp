@@ -216,7 +216,7 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     if (hartModel == Fast) {
         // By not having actual dynamism in the pointers we pass in, we seem to pick up a lot of speed.
         // if (!use_sigsegv_hack)
-            hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, (CASK::IOTarget*)&mem, RISCV::stringToExtensions("imacsu"));
+            hart = new OptimizedHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
         // else
         //     hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, hartIOTarget, RISCV::stringToExtensions("imacsu"));
     } else {
