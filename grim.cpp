@@ -3,22 +3,16 @@
 #include <array>
 
 #include <cxxopts.hpp>
+
 #include <ElfFile.hpp>
-#include <RiscVDecoder.hpp>
-
-#include <IOTargets/Bus.hpp>
-#include <IOTargets/IOLogger.hpp>
-#include <IOTargets/MappedPhysicalMemory.hpp>
-#include <IOTargets/CoreLocalInterruptor.hpp>
-#include <IOTargets/PowerButton.hpp>
-#include <IOTargets/ProxyKernelServer.hpp>
-#include <IOTargets/ToHostInstrument.hpp>
-#include <IOTargets/UART.hpp>
-#include <IOTargets/SignalTrappedMemory.hpp>
-
-#include <SimpleHart.hpp>
-#include <OptimizedHart.hpp>
-
+#include <Devices/Bus.hpp>
+#include <Devices/IOLogger.hpp>
+#include <Devices/MappedPhysicalMemory.hpp>
+#include <Devices/CoreLocalInterruptor.hpp>
+#include <Devices/PowerButton.hpp>
+#include <Devices/ProxyKernelServer.hpp>
+#include <Devices/UART.hpp>
+#include <Devices/OptimizedHart.hpp>
 #include <PrintStates.hpp>
 
 __uint64_t MaskForSize(__uint64_t size) {
@@ -33,9 +27,9 @@ __uint64_t MaskForSize(__uint64_t size) {
 //       the compiler does the right thing in O3.
 template <typename MXLEN_t, bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details>
 unsigned int tick_until(
-        Hart<MXLEN_t> *hart,
-        CASK::CoreLocalInterruptor* clint,
-        CASK::EventQueue *eq,
+        OptimizedHart<MXLEN_t> *hart,
+        CoreLocalInterruptor* clint,
+        std::queue<unsigned int> *eq,
         std::ostream *out,
         unsigned int *ticks,
         unsigned int cycle_limit,
@@ -53,23 +47,27 @@ unsigned int tick_until(
         }
 
         if constexpr (print_disasm) {
-            PrintInstruction<MXLEN_t>(&hart->state, hart->getVATransactor(), out);
-        }
-
-        if constexpr (limit_cycles || check_events) {
-            (*ticks) += hart->Tick();
+            if constexpr (limit_cycles || check_events) {
+                (*ticks) += hart->TickOnceAndPrintDisasm(&std::cout);
+            } else {
+                hart->TickOnceAndPrintDisasm(&std::cout);
+            }
         } else {
-            hart->Tick();
+            if constexpr (limit_cycles || check_events) {
+                (*ticks) += hart->Tick();
+            } else {
+                hart->Tick();
+            }
         }
 
         clint->Tick();
 
         if constexpr (check_events) {
-            // TODO BUG, this is not a good check anymore because the hart Tick can pass many cycles
-            // TODO ServiceInterrupts about here? Clint scheduled here?
             if ((*ticks) % event_check_freq == 0) {
-                if (!eq->IsEmpty()) {
-                    return eq->DequeueEvent();
+                if (!eq->empty()) {
+                    unsigned int event = eq->front();
+                    eq->pop();
+                    return event;
                 }
             }
         }
@@ -83,8 +81,7 @@ unsigned int tick_until(
 }
 
 template <typename MXLEN_t>
-using tick_func = unsigned int (*)(Hart<MXLEN_t>*, CASK::CoreLocalInterruptor*, CASK::EventQueue*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
-
+using tick_func = unsigned int (*)(OptimizedHart<MXLEN_t>*, CoreLocalInterruptor*, std::queue<unsigned int>*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
 
 template<typename MXLEN_t, unsigned int TickerHash>
 constexpr std::array<tick_func<MXLEN_t>, 32> add_tickers(std::array<tick_func<MXLEN_t>, 32> arr) {
@@ -167,88 +164,36 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
         }
     }
 
-    enum HartModelArg { Simple, Fast, Threaded };
-
-    HartModelArg hartModel = Simple;
-    if (parsed_arguments.count("model")) {
-        std::string hartModelName = parsed_arguments["model"].as<std::string>();
-        if (hartModelName.compare("simple") == 0) {
-            hartModel = Simple;
-        } else if (hartModelName.compare("fast") == 0) {
-            hartModel = Fast;
-        } else {
-            std::cerr << "Warning: ignoring invalid --model argument "
-                      << "\"" << hartModelName << "\". Valid choices are "
-                      << "(simple, fast)."
-                      << std::endl;
-        }
-    }
-
     // -- System Construction --
 
-    bool use_sigsegv_hack = false;
-    if (parsed_arguments.count("bananas"))
-        use_sigsegv_hack = true;
+    Bus bus;
+    std::queue<unsigned int> eq;
 
-    if (use_sigsegv_hack)
-    {
-        std::cerr << "Fatal: Banana bus mode is known to be incomplete; BKM slows the hart down and the fix is a lot of work!" << std::endl;
-        return;
-    }
-
-    CASK::Bus bus;
-    CASK::EventQueue eq;
-
-    CASK::IOLogger iologger(&bus, &std::cout); // TODO a locking stream
+    IOLogger iologger(&bus, &std::cout); // TODO a locking stream
     iologger.SetPrintContents(true);
 
-    CASK::IOTarget *hartIOTarget = print_mem ? (CASK::IOTarget*)&iologger : (CASK::IOTarget*)&bus;
+    Device *hartDevice = print_mem ? (Device*)&iologger : (Device*)&bus;
 
-    CASK::MappedPhysicalMemory mem;
+    MappedPhysicalMemory mem;
+    bus.AddDevice32((Device*)&mem, 0, 0xffffffff);
 
-    // if (use_sigsegv_hack) {
-    //     set_up_signal_trapped_memory();
-    //     hartIOTarget = new CASK::SignalTrappedMemory();
-    // } else {
-        bus.AddIOTarget32((CASK::IOTarget*)&mem, 0, 0xffffffff);
-    // }
+    OptimizedHart<MXLEN_t> *hart;
+    hart = new OptimizedHart<MXLEN_t>(hartDevice, RISCV::stringToExtensions("imacsu"));
 
-    Hart<MXLEN_t>* hart = nullptr;
-    if (hartModel == Fast) {
-        // By not having actual dynamism in the pointers we pass in, we seem to pick up a lot of speed.
-        // if (!use_sigsegv_hack)
-            hart = new OptimizedHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
-        // else
-        //     hart = new OptimizedHart<MXLEN_t, 8, true, 64, 8, 10>(hartIOTarget, hartIOTarget, RISCV::stringToExtensions("imacsu"));
-    } else {
-        hart = new SimpleHart<MXLEN_t>(hartIOTarget, RISCV::stringToExtensions("imacsu"));
-    }
-
-    CASK::UART uart;
-    bus.AddIOTarget32(&uart, 0x01000000, 0xf);
-    // if (use_sigsegv_hack)
-    //     make_device_hole(0x01000000, 0xfffff);
-
-    CASK::CoreLocalInterruptor clint;
-    bus.AddIOTarget32(&clint, 0x02000000, 0xfffff);
-
+    UART uart;
+    bus.AddDevice32(&uart, 0x01000000, 0xf);
+    CoreLocalInterruptor clint;
+    bus.AddDevice32(&clint, 0x02000000, 0xfffff);
     const __uint32_t shutdownEvent = 0x0D15EA5E;
-    // if (use_sigsegv_hack)
-    //     make_device_hole(0x02000000, 0xfffff);
+    PowerButton powerButton(&eq, shutdownEvent);
+    bus.AddDevice32(&powerButton, 0x01000010, 0xf);
 
-    CASK::PowerButton powerButton(&eq, shutdownEvent);
-    bus.AddIOTarget32(&powerButton, 0x01000010, 0xf);
-    // if (use_sigsegv_hack)
-    //     make_device_hole(0x01000010, 0xf);
-
-    CASK::ProxyKernelServer pkServer(hartIOTarget, &eq, shutdownEvent);
+    ProxyKernelServer pkServer(hartDevice, &eq, shutdownEvent);
     pkServer.SetCommandLine(arg_string);
     pkServer.SetFSRoot(fs_root);
     if (print_syscalls) {
         pkServer.AttachLog(&std::cout);
     }
-
-    CASK::ToHostInstrument toHost(&eq, shutdownEvent);
 
     HighELF::ElfFile elf;
     elf.Load(elfFileName);
@@ -265,17 +210,11 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
         if (elf.sections[sid].name.compare(".htif") == 0) {
             std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
             __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
-            bus.AddIOTarget32(&pkServer, elf.sectionHeaders[sid].sh_addr, mask);
-            // if (use_sigsegv_hack)
-            //     make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+            bus.AddDevice32(&pkServer, elf.sectionHeaders[sid].sh_addr, mask);
         }
 
         if (elf.sections[sid].name.compare(".tohost") == 0) {
-            std::cout << "    Setting up simulated device on behalf of proxy kernel" << std::endl;
-            __uint64_t mask = MaskForSize(elf.sectionHeaders[sid].sh_size);
-            bus.AddIOTarget32(&toHost, elf.sectionHeaders[sid].sh_addr, mask);
-            // if (use_sigsegv_hack)
-            //     make_device_hole(elf.sectionHeaders[sid].sh_addr, mask);
+            std::cout << "    Skipping setup of simulated device requested by the proxy kernel which we have no model for" << std::endl;
         }
 
         if (elf.sectionHeaders[sid].sh_type == 8) {
@@ -293,16 +232,13 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
                   << elf.sectionHeaders[sid].sh_size << " at address 0x"
                   << std::setw(16) << std::setfill('0') << std::hex
                   << elf.sectionHeaders[sid].sh_addr << std::endl;
-        hartIOTarget->Write32(elf.sectionHeaders[sid].sh_addr,
+        hartDevice->Write32(elf.sectionHeaders[sid].sh_addr,
                               elf.sectionHeaders[sid].sh_size,
                               elf.sections[sid].bytes.data());
     }
 
-    hart->resetVector = elf.elfHeader.e_entry;
+    hart->state.resetVector = elf.elfHeader.e_entry;
     hart->Reset();
-
-    hart->BeforeFirstTick();
-    clint.BeforeFirstTick();
 
     // TODO make a bytes file loader class - also this is naive and non-optimal
     if (!dtb_filename.empty()) {
@@ -329,7 +265,7 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
                   << " size 0x" << std::setw(16) << std::setfill('0') << std::hex << size
                   << " at address 0x" << std::setw(16) << std::setfill('0') << std::hex << 0xf0000000
                   << std::endl;
-        hartIOTarget->Write32(0xf0000000, size, bytes);
+        hartDevice->Write32(0xf0000000, size, bytes);
         delete[] bytes;
 
         hart->state.regs[11] = 0xf0000000;
@@ -344,29 +280,6 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm, print_details);
     tick_func<MXLEN_t> tick = tickers[tick_hash];
 
-    // if (use_sigsegv_hack) {
-    //     while (true) {
-    //         if (sigsetjmp(jbuf, ~0) == 0) [[likely]] {
-    //             // Do as much ticking as we possibly can
-    //             event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-    //             break;
-    //         } else {
-    //             // Used to set up stack context to return to every transaction so we could just retry that one
-    //             // transaction. Saving the context every time is costly and I didn't know it was necessary until I tried
-    //             // to do segfault-recovery. The new idea is to fault back all the way to outside the ticker.
-    //             // This is where that fault ends up - at this point, we know we segfaulted during the previous tick()!
-    //             // We need to re-run the tick that caused the banana-bus to fall apart, with the "safe" bus.
-    //             // A problem is that we're in a state where we've run "some of an instruction" and then SIGSEGV'd here.
-    //             // What we can do is take a copy of the (public) HartState every so often.
-    //             // Then, we install it back into the hart we're running, and swap out its bus (need to add that API)
-    //             // Then, we can re-run it's CASK-Tick function directly. Then re-swap to the fast stuff, and continue
-    //             // out of the loop.
-    //             continue;
-    //         }
-    //     }
-    // } else {
-    //     event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
-    // }
     auto begin = std::chrono::high_resolution_clock::now();
     event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
     auto end = std::chrono::high_resolution_clock::now();
@@ -418,7 +331,6 @@ int main(int argc, char **argv) {
     ("c,cycles", "Number of cycles to run, 0 for unlimited", cxxopts::value<unsigned int>())
     ("e,check-events-every", "Number of cycles between checking the event queue", cxxopts::value<unsigned int>())
     ("p,print", "String matching /[drtcms]*/ for [d]isassembly, [r]egisters, [t]iming, system [c]alls, [m]emory transcations and a final [s]ummary", cxxopts::value<std::string>())
-    ("bananas", "Use a crazy hack where we trap sigsegv to make memory faster")
     ("h,help", "Print help message");
 
     cxxopts::ParseResult parsed_arguments = options.parse(argc, argv);

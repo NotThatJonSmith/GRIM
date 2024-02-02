@@ -2,25 +2,32 @@
 
 #include <RiscV.hpp>
 #include <Swizzle.hpp>
-#include <Translation.hpp>
-#include <Transactor.hpp>
 #include <HartState.hpp>
 
-template<typename XLEN_t, CASK::AccessType accessType>
+template<typename XLEN_t>
+struct Translation {
+    XLEN_t untranslated;
+    XLEN_t translated;
+    XLEN_t virtPageStart;
+    XLEN_t validThrough;
+    RISCV::TrapCause generatedTrap;
+};
+
+template<typename XLEN_t, AccessType accessType>
 inline Translation<XLEN_t> PageFault(XLEN_t virt_addr) {
-    if constexpr (accessType == CASK::AccessType::R) {
+    if constexpr (accessType == AccessType::R) {
         return { virt_addr, 0, 0, 0, RISCV::TrapCause::LOAD_PAGE_FAULT };
-    } else if constexpr (accessType == CASK::AccessType::W) {
+    } else if constexpr (accessType == AccessType::W) {
         return { virt_addr, 0, 0, 0, RISCV::TrapCause::STORE_AMO_PAGE_FAULT };
     } else {
         return { virt_addr, 0, 0, 0, RISCV::TrapCause::INSTRUCTION_PAGE_FAULT };
     }
 }
 
-template<typename XLEN_t, CASK::AccessType accessType>
+template<typename XLEN_t, AccessType accessType>
 static inline Translation<XLEN_t> TranslationAlgorithm(
         XLEN_t virt_addr,
-        Transactor<XLEN_t>* transactor,
+        Device* mem,
         XLEN_t root_ppn,
         RISCV::PagingMode currentPagingMode,
         RISCV::PrivilegeMode translationPrivilege,
@@ -65,7 +72,7 @@ static inline Translation<XLEN_t> TranslationAlgorithm(
     while (true) {
 
         XLEN_t pteaddr = a + (vpn[i] * ptesize);
-        transactor->Read(pteaddr, ptesize, (char*)&pte);
+        mem->Read(pteaddr, ptesize, (char*)&pte);
 
         // TODO PMA & PMP checks
 
@@ -93,12 +100,12 @@ static inline Translation<XLEN_t> TranslationAlgorithm(
     }
 
     // TODO this could be constexpr if not for pedantry wrt mxrBit
-    if (accessType == CASK::AccessType::R) {
+    if (accessType == AccessType::R) {
         if (!(pte & RISCV::PTEBit::R) &&
             !((pte & RISCV::PTEBit::X) && mxrBit)) {
             return PageFault<XLEN_t, accessType>(virt_addr);
         }
-    } else if (accessType == CASK::AccessType::W) {
+    } else if (accessType == AccessType::W) {
         if (!(pte & RISCV::PTEBit::W)) {
             return PageFault<XLEN_t, accessType>(virt_addr);
         }
@@ -148,7 +155,7 @@ static inline Translation<XLEN_t> TranslationAlgorithm(
         return PageFault<XLEN_t, accessType>(virt_addr);
     }
 
-    if constexpr (accessType == CASK::AccessType::W) {
+    if constexpr (accessType == AccessType::W) {
         if (!(pte & RISCV::PTEBit::D)) {
             return PageFault<XLEN_t, accessType>(virt_addr);
         }

@@ -3,14 +3,12 @@
 #include <cstring>
 #include <type_traits>
 
-#include <IOTarget.hpp>
+#include <Device.hpp>
 
 #include <sys/mman.h>
 #include <cassert>
 
-namespace CASK {
-
-class MappedPhysicalMemory final : public CASK::IOTarget {
+class MappedPhysicalMemory final : public Device {
 
 public:
     MappedPhysicalMemory() {
@@ -64,7 +62,7 @@ private:
 
     char* memStartAddress;
 
-    template <typename T, CASK::AccessType accessType>
+    template <typename T, AccessType accessType>
     inline T TransactInternal(T startAddress, T size, char* buf) {
 
         if constexpr (accessType != AccessType::W) {
@@ -76,5 +74,3 @@ private:
         return size;
     }
 };
-
-} // namespace CASK

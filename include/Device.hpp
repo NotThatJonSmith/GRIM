@@ -5,16 +5,16 @@
 
 #include <iostream>
 
-
-namespace CASK {
-
 enum AccessType { R, W, X };
 
-class IOTarget {
+class Device {
 
 public:
 
     void *hint = nullptr;
+
+    virtual inline void Reset() { };
+    virtual inline unsigned int Tick() { return 1; };
 
     /*
      * Generic transaction helper function template. Instantiates as one of the
@@ -81,5 +81,3 @@ public:
     }
 
 };
-
-} // namespace CASK

@@ -1,27 +1,45 @@
 #pragma once
 
-#include <IOTarget.hpp>
+#include <Device.hpp>
 #include <vector>
 
-namespace CASK {
-
-class Bus final : public IOTarget {
+class Bus final : public Device {
 
 public:
 
-    virtual __uint32_t Read32(__uint32_t startAddress, __uint32_t size, char* dst) override;
-    virtual __uint64_t Read64(__uint64_t startAddress, __uint64_t size, char* dst) override;
-    virtual __uint128_t Read128(__uint128_t startAddress, __uint128_t size, char* dst) override;
-    virtual __uint32_t Write32(__uint32_t startAddress, __uint32_t size, char* src) override;
-    virtual __uint64_t Write64(__uint64_t startAddress, __uint64_t size, char* src) override;
-    virtual __uint128_t Write128(__uint128_t startAddress, __uint128_t size, char* src) override;
-    virtual __uint32_t Fetch32(__uint32_t startAddress, __uint32_t size, char* src) override;
-    virtual __uint64_t Fetch64(__uint64_t startAddress, __uint64_t size, char* src) override;
-    virtual __uint128_t Fetch128(__uint128_t startAddress, __uint128_t size, char* src) override;
+    virtual __uint32_t Read32(__uint32_t startAddress, __uint32_t size, char* buf) override { return TransactInternal<__uint32_t, AccessType::R>(startAddress, size, buf); }
+    virtual __uint64_t Read64(__uint64_t startAddress, __uint64_t size, char* buf) override { return TransactInternal<__uint64_t, AccessType::R>(startAddress, size, buf); }
+    virtual __uint128_t Read128(__uint128_t startAddress, __uint128_t size, char* buf) override { return TransactInternal<__uint128_t, AccessType::R>(startAddress, size, buf); }
+    virtual __uint32_t Write32(__uint32_t startAddress, __uint32_t size, char* buf) override { return TransactInternal<__uint32_t, AccessType::W>(startAddress, size, buf); }
+    virtual __uint64_t Write64(__uint64_t startAddress, __uint64_t size, char* buf) override { return TransactInternal<__uint64_t, AccessType::W>(startAddress, size, buf); }
+    virtual __uint128_t Write128(__uint128_t startAddress, __uint128_t size, char* buf) override { return TransactInternal<__uint128_t, AccessType::W>(startAddress, size, buf); }
+    virtual __uint32_t Fetch32(__uint32_t startAddress, __uint32_t size, char* buf) override { return TransactInternal<__uint32_t, AccessType::X>(startAddress, size, buf); }
+    virtual __uint64_t Fetch64(__uint64_t startAddress, __uint64_t size, char* buf) override { return TransactInternal<__uint64_t, AccessType::X>(startAddress, size, buf); }
+    virtual __uint128_t Fetch128(__uint128_t startAddress, __uint128_t size, char* buf) override { return TransactInternal<__uint128_t, AccessType::X>(startAddress, size, buf); }
 
-    void AddIOTarget32(IOTarget *target, __uint32_t address, __uint32_t mask);
-    void AddIOTarget64(IOTarget *target, __uint64_t address, __uint64_t mask);
-    void AddIOTarget128(IOTarget *target, __uint128_t address, __uint128_t mask);
+    void AddDevice32(Device *dev, __uint32_t address, __uint32_t sizeMinusOne) {
+        AddDevice<__uint32_t>(dev, address, sizeMinusOne);
+        AddDevice<__uint64_t>(dev, address, sizeMinusOne);
+        AddDevice<__uint128_t>(dev, address, sizeMinusOne);
+    }
+
+    void AddDevice64(Device *dev, __uint64_t address, __uint64_t sizeMinusOne) {
+        if (address < ((__uint64_t)1 << 32)) {
+            AddDevice<__uint32_t>(dev, address, 0xffffffff-address);
+        }
+        AddDevice<__uint64_t>(dev, address, sizeMinusOne);
+        AddDevice<__uint128_t>(dev, address, sizeMinusOne);
+    }
+
+    void AddDevice128(Device *dev, __uint128_t address, __uint128_t sizeMinusOne) {
+        if (address < ((__uint64_t)1 << 32)) {
+            AddDevice<__uint32_t>(dev, address, 0xffffffff-address);
+        }
+        if (address < ((__uint128_t)1 << 64)) {
+            AddDevice<__uint64_t>(dev, address, 0xffffffffffffffff-address);
+        }
+        AddDevice<__uint128_t>(dev, address, sizeMinusOne);
+    }
 
 private:
 
@@ -30,7 +48,7 @@ private:
         T first;
         T last;
         T deviceStart;
-        IOTarget *target;
+        Device *target;
     };
 
     std::vector<BusMapping<__uint32_t>> mappings32;
@@ -49,7 +67,7 @@ private:
     }
 
     // TODO handle transactions that stride multiple mappings
-    template<typename T, CASK::AccessType accessType>
+    template<typename T, AccessType accessType>
     inline T TransactInternal(T startAddress, T size, char* buf) {
         for (BusMapping<T> &candidate : *AddressMapForWidth<T>()) {
             if (startAddress >= candidate.first && startAddress + size - 1 <= candidate.last ) {
@@ -64,7 +82,7 @@ private:
 
     // TODO be clear about the meaning of size (it's actually size-1 right now for max-int problem)
     template<typename T>
-    inline void AddIOTarget(IOTarget *dev, T address, T sizeMinusOne) {
+    inline void AddDevice(Device *dev, T address, T sizeMinusOne) {
         T first = address;
         T last = address + sizeMinusOne;
         std::vector<BusMapping<T>>* map = AddressMapForWidth<T>();
@@ -102,5 +120,3 @@ private:
     }
 
 };
-
-} // namespace CASK

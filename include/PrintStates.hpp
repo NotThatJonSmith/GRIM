@@ -1,3 +1,4 @@
+#pragma once
 
 #include <iostream>
 #include <iomanip>
@@ -171,23 +172,5 @@ void PrintRegisters(HartState<XLEN_t>* state, std::ostream* out, bool abi, unsig
 
 template<> 
 void PrintRegisters<__uint128_t>(HartState<__uint128_t>* state, std::ostream* out, bool abi, unsigned int regsPerLine) {
-    (*out) << "128-bit prints not supported";
-}
-
-template<typename XLEN_t>
-void PrintInstruction(HartState<XLEN_t>* state, Transactor<XLEN_t>* vaTransactor, std::ostream* out) {
-    __uint32_t encodedInstruction = 0;
-    vaTransactor->Fetch(state->pc, 4, (char*)&encodedInstruction);
-    (*out) << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
-           << state->pc << ":\t"
-           << std::hex << std::setfill('0') << std::setw(sizeof(encodedInstruction)*2)
-           << encodedInstruction << "\t"
-           << std::dec;
-    Instruction<XLEN_t> instr = decode_instruction<XLEN_t>(encodedInstruction, state->misa.extensions, state->misa.mxlen);
-    instr.disassemblyFunction(encodedInstruction, out);
-}
-
-template<> 
-void PrintInstruction<__uint128_t>(HartState<__uint128_t>* state, Transactor<__uint128_t>* vaTransactor, std::ostream* out) {
     (*out) << "128-bit prints not supported";
 }

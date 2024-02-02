@@ -7,7 +7,6 @@
  * compiler can precompute tables that feed into faster decoder strategies.
  */
 
-#include <DecodedInstruction.hpp>
 #include <RiscV.hpp>
 #include <Instructions.hpp>
 

@@ -1,33 +1,31 @@
 #pragma once
 
-#include <IOTarget.hpp>
+#include <Device.hpp>
 
 #include <ostream>
 #include <iomanip>
 
 #include <queue>
 
-namespace CASK {
-
-class IOLogger : public IOTarget {
+class IOLogger : public Device {
 
 public:
 
-    IOLogger(IOTarget* startTarget, std::ostream* startOStream);
-    virtual __uint32_t Read32(__uint32_t startAddress, __uint32_t size, char* dst) override;
-    virtual __uint64_t Read64(__uint64_t startAddress, __uint64_t size, char* dst) override;
-    virtual __uint128_t Read128(__uint128_t startAddress, __uint128_t size, char* dst) override;
-    virtual __uint32_t Write32(__uint32_t startAddress, __uint32_t size, char* src) override;
-    virtual __uint64_t Write64(__uint64_t startAddress, __uint64_t size, char* src) override;
-    virtual __uint128_t Write128(__uint128_t startAddress, __uint128_t size, char* src) override;
-    virtual __uint32_t Fetch32(__uint32_t startAddress, __uint32_t size, char* src) override;
-    virtual __uint64_t Fetch64(__uint64_t startAddress, __uint64_t size, char* src) override;
-    virtual __uint128_t Fetch128(__uint128_t startAddress, __uint128_t size, char* src) override;
-    void SetPrintContents(bool enabled);
+    IOLogger(Device* startTarget, std::ostream* startOStream) : target(startTarget), stream(startOStream) {}
+    virtual __uint32_t Read32(__uint32_t startAddress, __uint32_t size, char* dst) override { target->Read32(startAddress, size, dst); return WriteLog<__uint32_t>("Read32", dst, startAddress, size); }
+    virtual __uint64_t Read64(__uint64_t startAddress, __uint64_t size, char* dst) override { target->Read64(startAddress, size, dst); return WriteLog<__uint64_t>("Read64", dst, startAddress, size); }
+    virtual __uint128_t Read128(__uint128_t startAddress, __uint128_t size, char* dst) override { target->Read128(startAddress, size, dst); return WriteLog<__uint128_t>("Read128", dst, startAddress, size); }
+    virtual __uint32_t Write32(__uint32_t startAddress, __uint32_t size, char* src) override { target->Write32(startAddress, size, src); return WriteLog<__uint32_t>("Write32", src, startAddress, size); }
+    virtual __uint64_t Write64(__uint64_t startAddress, __uint64_t size, char* src) override { target->Write64(startAddress, size, src); return WriteLog<__uint64_t>("Write64", src, startAddress, size); }
+    virtual __uint128_t Write128(__uint128_t startAddress, __uint128_t size, char* src) override { target->Write128(startAddress, size, src); return WriteLog<__uint128_t>("Write128", src, startAddress, size); }
+    virtual __uint32_t Fetch32(__uint32_t startAddress, __uint32_t size, char* dst) override { target->Fetch32(startAddress, size, dst); return WriteLog<__uint32_t>("Fetch32", dst, startAddress, size); }
+    virtual __uint64_t Fetch64(__uint64_t startAddress, __uint64_t size, char* dst) override { target->Fetch64(startAddress, size, dst); return WriteLog<__uint64_t>("Fetch64", dst, startAddress, size); }
+    virtual __uint128_t Fetch128(__uint128_t startAddress, __uint128_t size, char* dst) override { target->Fetch128(startAddress, size, dst); return WriteLog<__uint128_t>("Fetch128", dst, startAddress, size); }
+    void SetPrintContents(bool enabled) { logContents = enabled; }
 
 private:
 
-    IOTarget* target;
+    Device* target;
     std::ostream* stream;
     bool logContents;
 
@@ -85,5 +83,3 @@ private:
         return size;
     }
 };
-
-} // namespace CASK

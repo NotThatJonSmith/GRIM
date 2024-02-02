@@ -4,7 +4,6 @@
 #include <functional>
 
 #include <RiscV.hpp>
-#include <DecodedInstruction.hpp>
 
 enum class HartCallbackArgument {
     ChangedPrivilege,
@@ -28,6 +27,7 @@ public:
     // bits vs. broken out fields for these registers. First wrap in accessors.
 
     XLEN_t pc;
+    XLEN_t resetVector;
 
     XLEN_t regs[RISCV::NumRegs];
     RISCV::PrivilegeMode privilegeMode = RISCV::PrivilegeMode::Machine;
@@ -59,7 +59,7 @@ public:
         // TODO just reset instead?
     }
 
-    void Reset(XLEN_t resetVector) {
+    void Reset() {
 
         pc = resetVector;
 
