@@ -6,7 +6,6 @@
 
 template<typename XLEN_t>
 struct Translation {
-    XLEN_t untranslated;
     XLEN_t translated;
     XLEN_t virtPageStart;
     XLEN_t validThrough;
@@ -16,11 +15,11 @@ struct Translation {
 template<typename XLEN_t, AccessType accessType>
 inline Translation<XLEN_t> PageFault(XLEN_t virt_addr) {
     if constexpr (accessType == AccessType::R) {
-        return { virt_addr, 0, 0, 0, RISCV::TrapCause::LOAD_PAGE_FAULT };
+        return { 0, 0, 0, RISCV::TrapCause::LOAD_PAGE_FAULT };
     } else if constexpr (accessType == AccessType::W) {
-        return { virt_addr, 0, 0, 0, RISCV::TrapCause::STORE_AMO_PAGE_FAULT };
+        return { 0, 0, 0, RISCV::TrapCause::STORE_AMO_PAGE_FAULT };
     } else {
-        return { virt_addr, 0, 0, 0, RISCV::TrapCause::INSTRUCTION_PAGE_FAULT };
+        return { 0, 0, 0, RISCV::TrapCause::INSTRUCTION_PAGE_FAULT };
     }
 }
 
@@ -42,7 +41,7 @@ static inline Translation<XLEN_t> TranslationAlgorithm(
 
     if (translationPrivilege == RISCV::PrivilegeMode::Machine ||
         currentPagingMode == RISCV::PagingMode::Bare) {
-        return { virt_addr, virt_addr, (XLEN_t)0, (XLEN_t)~0, RISCV::TrapCause::NONE };
+        return { virt_addr, (XLEN_t)0, (XLEN_t)~0, RISCV::TrapCause::NONE };
     } else if (currentPagingMode == RISCV::PagingMode::Sv32) {
         i = 1;
         vpn[1] = swizzle<XLEN_t, ExtendBits::Zero, 31, 22>(virt_addr);
@@ -181,5 +180,5 @@ static inline Translation<XLEN_t> TranslationAlgorithm(
     XLEN_t virt_page_start = virt_addr & ~(pagesize - 1);
     XLEN_t virt_valid_through = virt_addr | (pagesize - 1);
     // TODO this is inefficient for superpages because it only uses the size of regular pages.
-    return { virt_addr, phys_addr, virt_page_start, virt_valid_through, RISCV::TrapCause::NONE };
+    return { phys_addr, virt_page_start, virt_valid_through, RISCV::TrapCause::NONE };
 }

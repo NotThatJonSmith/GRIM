@@ -14,7 +14,7 @@ private:
 
     Device* target;
 
-    static constexpr unsigned int cacheBits = 8;
+    static constexpr unsigned int cacheBits = 12;
     static constexpr unsigned int icacheBits = 12;
     static constexpr unsigned int fastLoopTicks = 1000;
     struct TranslationCacheEntry { char *hostPageStart; XLEN_t virtPageStart; XLEN_t validThrough; };
@@ -48,18 +48,17 @@ public:
 
     inline unsigned int Tick() {
         for (unsigned int i = 0; i < fastLoopTicks; i++) {
-            ICacheEntry *inst = &icache[(state.pc >> 1) & ((1<<icacheBits)-1)];
+            unsigned int icacheIndex = (state.pc >> 1) & ((1<<icacheBits)-1);
+            ICacheEntry *inst = &icache[icacheIndex];
             if (inst->full_pc == state.pc) [[ likely ]] {
                 inst->instruction(inst->encoding, this);
                 continue;
             }
             __uint32_t encoding;
-            XLEN_t transferredSize = Transact<__uint32_t, AccessType::X>(state.pc, (char*)&encoding);
-            if (transferredSize != sizeof(encoding)) {
+            if (!Transact<__uint32_t, AccessType::X>(state.pc, (char*)&encoding))
                 continue;
-            }
             DecodedInstruction<XLEN_t> decoded = Decode(encoding);
-            icache[(state.pc >> 1) & ((1<<icacheBits)-1)] = { state.pc, encoding, decoded };
+            icache[icacheIndex] = { state.pc, encoding, decoded };
             decoded(encoding, this);
         }
         return fastLoopTicks;
@@ -86,10 +85,8 @@ public:
         }
 
         __uint32_t encoding;
-        XLEN_t transferredSize = Transact<__uint32_t, AccessType::X>(state.pc, (char*)&encoding);
-        if (transferredSize != sizeof(encoding)) {
+        if (!Transact<__uint32_t, AccessType::X>(state.pc, (char*)&encoding))
             return 1;
-        }
 
         if constexpr (sizeof(XLEN_t) > 8) {
             std::cout << "128 bit printing not supported" << std::endl;
@@ -141,7 +138,7 @@ public:
     };
 
     template <typename MEM_TYPE_t, AccessType accessType>
-    inline XLEN_t Transact(XLEN_t startAddress, char* buf) {
+    inline bool Transact(XLEN_t startAddress, char* buf) {
         TranslationCacheEntry* cache = accessType == AccessType::R ? cacheR : (accessType == AccessType::W ? cacheW : cacheX);
         unsigned int index = (startAddress >> 12) & ((1 << cacheBits) - 1); // TODO assumes 4k pages, need flex for supers
         if (cache[index].virtPageStart >> 12 == startAddress >> 12) [[ likely ]] {
@@ -151,27 +148,50 @@ public:
             } else {
                 *(MEM_TYPE_t*)buf = *(MEM_TYPE_t*)hostAddress;
             }
-            return sizeof(MEM_TYPE_t);
+            return true;
         }
+
         Translation<XLEN_t> fresh_translation = TranslationAlgorithm<XLEN_t, accessType>(
             startAddress, target, state.satp.ppn, state.satp.pagingMode,
             state.mstatus.mprv ? state.mstatus.mpp : state.privilegeMode,
             state.mstatus.mxr, state.mstatus.sum);
         if (fresh_translation.generatedTrap != RISCV::TrapCause::NONE) [[ unlikely ]] {
             state.RaiseException(fresh_translation.generatedTrap, startAddress);
-            return 0; // TODO this is a lie; how much was really transacted? Latent bug here I'm just lazy now.
+            return false; // TODO this is a lie; how much was really transacted? Latent bug here I'm just lazy now.
         }
 
-        XLEN_t translatedChunkStart = fresh_translation.translated + startAddress - fresh_translation.untranslated;
-        /*XLEN_t transferredSize = TODO, errors if mismatch?*/
-        target->template Transact<XLEN_t, accessType>(translatedChunkStart, sizeof(MEM_TYPE_t), buf);
+        /*TODO what about errant Transaction?*/
+        target->template Transact<XLEN_t, accessType>(fresh_translation.translated, sizeof(MEM_TYPE_t), buf);
         if (target->hint) {
-            XLEN_t offset = fresh_translation.untranslated - fresh_translation.virtPageStart;
+            XLEN_t offset = startAddress - fresh_translation.virtPageStart;
             cache[index].hostPageStart = (char*)target->hint - offset;
             cache[index].virtPageStart = fresh_translation.virtPageStart;
             cache[index].validThrough = fresh_translation.validThrough;
+            // TODO, sidechannel for TranslationAlgorithm to give us a whole RWX result
+            if constexpr (accessType == AccessType::R) {
+                Translation<XLEN_t> mirrorTranslation = TranslationAlgorithm<XLEN_t, AccessType::W>(
+                    startAddress, target, state.satp.ppn, state.satp.pagingMode,
+                    state.mstatus.mprv ? state.mstatus.mpp : state.privilegeMode,
+                    state.mstatus.mxr, state.mstatus.sum);
+                if (mirrorTranslation.generatedTrap == RISCV::TrapCause::NONE) {
+                    cacheW[index].hostPageStart = cache[index].hostPageStart;
+                    cacheW[index].virtPageStart = cache[index].virtPageStart;
+                    cacheW[index].validThrough = cache[index].validThrough;
+                }
+            } else if constexpr (accessType == AccessType::W) {
+                Translation<XLEN_t> mirrorTranslation = TranslationAlgorithm<XLEN_t, AccessType::R>(
+                    startAddress, target, state.satp.ppn, state.satp.pagingMode,
+                    state.mstatus.mprv ? state.mstatus.mpp : state.privilegeMode,
+                    state.mstatus.mxr, state.mstatus.sum);
+                if (mirrorTranslation.generatedTrap == RISCV::TrapCause::NONE) {
+                    cacheR[index].hostPageStart = cache[index].hostPageStart;
+                    cacheR[index].virtPageStart = cache[index].virtPageStart;
+                    cacheR[index].validThrough = cache[index].validThrough;
+                }
+            }
+
         }
-        return sizeof(MEM_TYPE_t);
+        return true;
     }
 
 

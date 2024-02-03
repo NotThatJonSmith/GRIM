@@ -165,13 +165,13 @@ inline void ex_op_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
-    OperandType lhs = (~(OperandType)0) & hart->state.regs[rs1];
-    OperandType rhs = (~(OperandType)0) & (rhs_immediate ? imm : hart->state.regs[rs2]);
+    OperandType lhs = hart->state.regs[rs1];
+    OperandType rhs = (rhs_immediate ? imm : hart->state.regs[rs2]);
     Operation operation;
     XLEN_t rd_value = operation(lhs, rhs);
     if constexpr (sizeof(XLEN_t) > sizeof(OperandType)) {
-        bool result_sign_bit = rd_value >> ((sizeof(OperandType)*8)-1);
-        rd_value |= result_sign_bit ? ((XLEN_t)~0 << sizeof(OperandType)*8) : 0;
+        if (rd_value & (1 << (sizeof(OperandType)*8 - 1)))
+            rd_value |= ((XLEN_t)~0 << sizeof(OperandType)*8);
     }
     hart->state.regs[rd] = rd_value;
     hart->state.regs[0] = 0;
@@ -232,8 +232,7 @@ inline void ex_load_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
         imm = swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
     MEM_TYPE_t read_value;
     XLEN_t read_address = hart->state.regs[rs1] + imm;
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&read_value);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&read_value))
         return;
     hart->state.regs[rd] = read_value;
     hart->state.regs[0] = 0;
@@ -251,8 +250,7 @@ inline void ex_store_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = swizzle<__uint32_t, S_IMM>(encoding);
     XLEN_t write_addr = hart->state.regs[rs1] + imm;
     MEM_TYPE_t write_value = hart->state.regs[rs2] & (MEM_TYPE_t)~0;
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value))
         return;
     hart->state.pc += 4;
 }
@@ -264,9 +262,7 @@ inline void ex_scw(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     XLEN_t tmp = hart->state.regs[rs2];
     XLEN_t write_address = hart->state.regs[rs1];
-    XLEN_t write_size = 4;
-    XLEN_t transferredSize = hart->template Transact<__uint32_t, AccessType::W>(write_address, (char*)&tmp);
-    if (transferredSize != sizeof(write_size))
+    if (!hart->template Transact<__uint32_t, AccessType::W>(write_address, (char*)&tmp))
         return;
     hart->state.regs[rd] = 0; // NOTE, zero means sc succeeded - for now it always does!
     hart->state.pc += 4;
@@ -283,14 +279,14 @@ inline void ex_amo_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     MEM_TYPE_t mem_value = 0;
     XLEN_t mem_address = hart->state.regs[rs1];
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(mem_address, (char*)&mem_value);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::R>(mem_address, (char*)&mem_value))
         return;
     hart->state.regs[rd] = mem_value;
     hart->state.regs[0] = 0;
     Operation operation;
     mem_value = operation(mem_value, hart->state.regs[rs2]);
-    hart->template Transact<MEM_TYPE_t, AccessType::W>(mem_address, (char*)&mem_value);
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::W>(mem_address, (char*)&mem_value))
+        return;
     hart->state.pc += 4;
 }
 
@@ -404,8 +400,7 @@ inline void ex_cl_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     else imm = swizzle<__uint32_t, ExtendBits::Zero, 5, 5, 12, 10, 6, 6, 2>(encoding);
     MEM_TYPE_t mem_value;
     XLEN_t read_address = hart->state.regs[rs1] + imm;
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&mem_value);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&mem_value))
         return;
     hart->state.regs[rd] = mem_value;
     hart->state.regs[0] = 0;
@@ -436,8 +431,7 @@ inline void ex_cs_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     else if constexpr (sizeof(MEM_TYPE_t) >= 8) imm = swizzle<__uint32_t, ExtendBits::Zero, 6, 5, 12, 10, 3>(encoding);
     else imm = swizzle<__uint32_t, ExtendBits::Zero, 5, 5, 12, 10, 6, 6, 2>(encoding);
     XLEN_t write_addr = hart->state.regs[rs1] + imm;
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&hart->state.regs[rs2]);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&hart->state.regs[rs2]))
         return;
     hart->state.pc += 2;
 }
@@ -627,9 +621,7 @@ inline void ex_clwsp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     XLEN_t rs1_value = hart->state.regs[rs1];
     SXLEN_t imm_value = imm;
     XLEN_t read_address = rs1_value + imm_value;
-    XLEN_t read_size = 4;
-    XLEN_t transferredSize = hart->template Transact<__uint32_t, AccessType::R>(read_address, (char*)&word);
-    if (transferredSize != read_size)
+    if (!hart->template Transact<__uint32_t, AccessType::R>(read_address, (char*)&word))
         return;
     hart->state.regs[rd] = word;
     hart->state.regs[0] = 0;
@@ -653,8 +645,7 @@ inline void ex_cs_sp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 8, 7, 12, 9, 2>(encoding);
     XLEN_t write_addr = hart->state.regs[2] + imm;
     MEM_TYPE_t write_value = hart->state.regs[rs2] & ~(MEM_TYPE_t)0;
-    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value);
-    if (transferredSize != sizeof(MEM_TYPE_t))
+    if (!hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value))
         return;
     hart->state.pc += 2;
 }
