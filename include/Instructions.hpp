@@ -5,7 +5,22 @@
 #include <RiscV.hpp>
 
 #include <HartState.hpp>
-#include <Device.hpp>
+
+template<typename XLEN_t>
+class OptimizedHart;
+
+template<typename XLEN_t>
+using DecodedInstruction = void (*)(__uint32_t encoding, OptimizedHart<XLEN_t> *hart);
+
+template<typename XLEN_t>
+using DisassemblyFunction = void (*)(__uint32_t encoding, std::ostream* out);
+
+template<typename XLEN_t>
+struct Instruction {
+    DecodedInstruction<XLEN_t> executionFunction;
+    DisassemblyFunction<XLEN_t> disassemblyFunction;
+};
+
 
 #include <type_traits>
 
@@ -36,19 +51,7 @@
 #define CI_SHAMT     ExtendBits::Zero, 12, 12, 6, 2
 
 template<typename XLEN_t>
-using DecodedInstruction = void (*)(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem);
-
-template<typename XLEN_t>
-using DisassemblyFunction = void (*)(__uint32_t encoding, std::ostream* out);
-
-template<typename XLEN_t>
-struct Instruction {
-    DecodedInstruction<XLEN_t> executionFunction;
-    DisassemblyFunction<XLEN_t> disassemblyFunction;
-};
-
-template<typename XLEN_t>
-inline void ex_unimplemented(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_unimplemented(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     exit(1);
 }
 
@@ -74,8 +77,8 @@ struct StringLiteral {
 };
 
 template<typename XLEN_t>
-inline void ex_illegal(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+inline void ex_illegal(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
 }
 
 template<StringLiteral mnemonic>
@@ -153,73 +156,73 @@ inline void print_jal(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t, typename OperandType, typename Operation, bool rhs_immediate>
-inline void ex_op_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_op_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(OperandType) > sizeof(XLEN_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
-    OperandType lhs = (~(OperandType)0) & state->regs[rs1];
-    OperandType rhs = (~(OperandType)0) & (rhs_immediate ? imm : state->regs[rs2]);
+    OperandType lhs = (~(OperandType)0) & hart->state.regs[rs1];
+    OperandType rhs = (~(OperandType)0) & (rhs_immediate ? imm : hart->state.regs[rs2]);
     Operation operation;
     XLEN_t rd_value = operation(lhs, rhs);
     if constexpr (sizeof(XLEN_t) > sizeof(OperandType)) {
         bool result_sign_bit = rd_value >> ((sizeof(OperandType)*8)-1);
         rd_value |= result_sign_bit ? ((XLEN_t)~0 << sizeof(OperandType)*8) : 0;
     }
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 4;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t, typename ComparisonOp>
-inline void ex_branch_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_branch_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, B_IMM>(encoding);
     ComparisonOp compare;
-    state->pc += compare(state->regs[rs1], state->regs[rs2]) ? imm : 4;
+    hart->state.pc += compare(hart->state.regs[rs1], hart->state.regs[rs2]) ? imm : 4;
 }
 
 template<typename XLEN_t, bool add_pc>
-inline void ex_upper_immediate_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_upper_immediate_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t imm = swizzle<__uint32_t, U_IMM>(encoding);
-    state->regs[rd] = (add_pc ? state->pc : 0) + imm;
-    state->regs[0] = 0;
-    state->pc += 4;
+    hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_jal(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_jal(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __int32_t imm = swizzle<__uint32_t, J_IMM>(encoding);
-    state->regs[rd] = state->pc + 4;
-    state->regs[0] = 0;
-    state->pc = state->pc + imm;
+    hart->state.regs[rd] = hart->state.pc + 4;
+    hart->state.regs[0] = 0;
+    hart->state.pc = hart->state.pc + imm;
 }
 
 template<typename XLEN_t>
-inline void ex_jalr(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_jalr(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     typedef std::make_signed_t<XLEN_t> SXLEN_t;
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
     SXLEN_t imm_value = imm;
     imm_value &= ~(XLEN_t)1;
-    state->regs[rd] = state->pc + 4;
-    state->regs[0] = 0;
-    state->pc = state->regs[rs1] + imm_value;
+    hart->state.regs[rd] = hart->state.pc + 4;
+    hart->state.regs[0] = 0;
+    hart->state.pc = hart->state.regs[rs1] + imm_value;
 }
 
 // TODO endianness-agnostic impl; for now host and RV being both LE save us
 template<typename XLEN_t, typename MEM_TYPE_t, bool ignore_immediate>
-inline void ex_load_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_load_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(XLEN_t) < sizeof(MEM_TYPE_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
@@ -228,127 +231,127 @@ inline void ex_load_generic(__uint32_t encoding, HartState<XLEN_t> *state, Devic
     if constexpr (!ignore_immediate)
         imm = swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
     MEM_TYPE_t read_value;
-    XLEN_t read_address = state->regs[rs1] + imm;
-    XLEN_t transferredSize = mem->template Read<XLEN_t>(read_address, sizeof(MEM_TYPE_t), (char*)&read_value);
+    XLEN_t read_address = hart->state.regs[rs1] + imm;
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&read_value);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->regs[rd] = read_value;
-    state->regs[0] = 0;
-    state->pc += 4;
+    hart->state.regs[rd] = read_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t>
-inline void ex_store_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_store_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(XLEN_t) < sizeof(MEM_TYPE_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, S_IMM>(encoding);
-    XLEN_t write_addr = state->regs[rs1] + imm;
-    MEM_TYPE_t write_value = state->regs[rs2] & (MEM_TYPE_t)~0;
-    XLEN_t transferredSize = mem->template Write<XLEN_t>(write_addr, sizeof(MEM_TYPE_t), (char*)&write_value);
+    XLEN_t write_addr = hart->state.regs[rs1] + imm;
+    MEM_TYPE_t write_value = hart->state.regs[rs2] & (MEM_TYPE_t)~0;
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->pc += 4;
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_scw(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_scw(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
-    XLEN_t tmp = state->regs[rs2];
-    XLEN_t write_address = state->regs[rs1];
+    XLEN_t tmp = hart->state.regs[rs2];
+    XLEN_t write_address = hart->state.regs[rs1];
     XLEN_t write_size = 4;
-    XLEN_t transferredSize = mem->template Write<XLEN_t>(write_address, write_size, (char*)&tmp);
+    XLEN_t transferredSize = hart->template Transact<__uint32_t, AccessType::W>(write_address, (char*)&tmp);
     if (transferredSize != sizeof(write_size))
         return;
-    state->regs[rd] = 0; // NOTE, zero means sc succeeded - for now it always does!
-    state->pc += 4;
+    hart->state.regs[rd] = 0; // NOTE, zero means sc succeeded - for now it always does!
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t, typename Operation>
-inline void ex_amo_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_amo_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(XLEN_t) < sizeof(MEM_TYPE_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
     MEM_TYPE_t mem_value = 0;
-    XLEN_t mem_address = state->regs[rs1];
-    XLEN_t transferredSize = mem->template Read<XLEN_t>(mem_address, sizeof(MEM_TYPE_t), (char*)&mem_value);
+    XLEN_t mem_address = hart->state.regs[rs1];
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(mem_address, (char*)&mem_value);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->regs[rd] = mem_value;
-    state->regs[0] = 0;
+    hart->state.regs[rd] = mem_value;
+    hart->state.regs[0] = 0;
     Operation operation;
-    mem_value = operation(mem_value, state->regs[rs2]);
-    mem->template Write<XLEN_t>(mem_address, sizeof(MEM_TYPE_t), (char*)&mem_value);
-    state->pc += 4;
+    mem_value = operation(mem_value, hart->state.regs[rs2]);
+    hart->template Transact<MEM_TYPE_t, AccessType::W>(mem_address, (char*)&mem_value);
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_fence(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->pc += 4; // NOP for now.
+inline void ex_fence(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.pc += 4; // NOP for now.
 }
 
 template<typename XLEN_t>
-inline void ex_fencei(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->implCallback(HartCallbackArgument::RequestedIfence);
-    state->pc += 4;
+inline void ex_fencei(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.implCallback(HartCallbackArgument::RequestedIfence);
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_ecall(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_ecall(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     RISCV::TrapCause cause =
-        state->privilegeMode == RISCV::PrivilegeMode::Machine ? RISCV::TrapCause::ECALL_FROM_M_MODE :
-        state->privilegeMode == RISCV::PrivilegeMode::Supervisor ? RISCV::TrapCause::ECALL_FROM_S_MODE :
+        hart->state.privilegeMode == RISCV::PrivilegeMode::Machine ? RISCV::TrapCause::ECALL_FROM_M_MODE :
+        hart->state.privilegeMode == RISCV::PrivilegeMode::Supervisor ? RISCV::TrapCause::ECALL_FROM_S_MODE :
         RISCV::TrapCause::ECALL_FROM_U_MODE;
-    state->RaiseException(cause, encoding);
+    hart->state.RaiseException(cause, encoding);
 }
 
 template<typename XLEN_t>
-inline void ex_ebreak(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->RaiseException(RISCV::TrapCause::BREAKPOINT, encoding);
+inline void ex_ebreak(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.RaiseException(RISCV::TrapCause::BREAKPOINT, encoding);
 }
 
 template<typename XLEN_t, bool sets_bits, bool clears_bits, bool rs1_is_immediate>
-inline void ex_csr_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_csr_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     RISCV::CSRAddress csr = (RISCV::CSRAddress)swizzle<__uint32_t, ExtendBits::Zero, I_IMM>(encoding);
-    if (state->privilegeMode < RISCV::csrRequiredPrivilege(csr)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+    if (hart->state.privilegeMode < RISCV::csrRequiredPrivilege(csr)) {
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
-    XLEN_t regVal = rs1_is_immediate ? rs1 : state->regs[rs1];
+    XLEN_t regVal = rs1_is_immediate ? rs1 : hart->state.regs[rs1];
     XLEN_t csrValue = 0;
     bool read_required = sets_bits || clears_bits || rd;
     bool write_required = !(sets_bits || clears_bits) || rs1;
     if (read_required) {
-        XLEN_t csrValue = state->ReadCSR(csr);
-        state->regs[rd] = csrValue;
-        state->regs[0] = 0;
+        XLEN_t csrValue = hart->state.ReadCSR(csr);
+        hart->state.regs[rd] = csrValue;
+        hart->state.regs[0] = 0;
     }
     if constexpr (sets_bits) csrValue |= regVal;
     if constexpr (clears_bits) csrValue = ~csrValue & regVal;
     if (write_required) {
         if (RISCV::csrIsReadOnly(csr)) {
-            state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+            hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
             return;
         }
-        state->WriteCSR(csr, regVal);
+        hart->state.WriteCSR(csr, regVal);
     }
-    state->pc += 4;
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_wfi(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->pc += 4; // NOP for now. TODO something smarter with the hart's interrupt pins
+inline void ex_wfi(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.pc += 4; // NOP for now. TODO something smarter with the hart's interrupt pins
 }
 
 // TODO URET is only provided if user-mode traps are supported, and should raise an illegal encodingruction otherwise.
@@ -356,27 +359,27 @@ inline void ex_wfi(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
 // illegal encodingruction exception otherwise. SRET should also raise an illegal encodingruction exception when TSR=1
 // in mstatus, as described in Section 3.1.6.4.
 template<typename XLEN_t, RISCV::PrivilegeMode from_mode>
-inline void ex_trap_return(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    if (state->privilegeMode < from_mode) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+inline void ex_trap_return(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    if (hart->state.privilegeMode < from_mode) {
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
-    state->template ReturnFromTrap<from_mode>();
+    hart->state.template ReturnFromTrap<from_mode>();
 }
 
 template<typename XLEN_t>
-inline void ex_sfencevma(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
-    state->implCallback(HartCallbackArgument::RequestedVMfence);
-    state->pc += 4;
+inline void ex_sfencevma(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    hart->state.implCallback(HartCallbackArgument::RequestedVMfence);
+    hart->state.pc += 4;
 }
 
 template<typename XLEN_t>
-inline void ex_caddi4spn(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_caddi4spn(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CIW_RDX>(encoding)+8;
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 10, 7, 12, 11, 5, 5, 6, 6, 2>(encoding);
-    state->regs[rd] = state->regs[2] + imm;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = hart->state.regs[2] + imm;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -388,9 +391,9 @@ inline void print_caddi4spn(__uint32_t encoding, std::ostream* out) {
 
 // TODO maybe combine cl and cs ?
 template<typename XLEN_t, typename MEM_TYPE_t>
-inline void ex_cl_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cl_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(MEM_TYPE_t) > sizeof(XLEN_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rd = swizzle<__uint32_t, CL_RDX>(encoding)+8;
@@ -400,13 +403,13 @@ inline void ex_cl_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device 
     else if constexpr (sizeof(MEM_TYPE_t) >= 8) imm = swizzle<__uint32_t, ExtendBits::Zero, 6, 5, 12, 10, 3>(encoding);
     else imm = swizzle<__uint32_t, ExtendBits::Zero, 5, 5, 12, 10, 6, 6, 2>(encoding);
     MEM_TYPE_t mem_value;
-    XLEN_t read_address = state->regs[rs1] + imm;
-    XLEN_t transferredSize = mem->template Read<XLEN_t>(read_address, sizeof(MEM_TYPE_t), (char*)&mem_value);
+    XLEN_t read_address = hart->state.regs[rs1] + imm;
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::R>(read_address, (char*)&mem_value);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->regs[rd] = mem_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = mem_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t, StringLiteral mnemonic>
@@ -421,9 +424,9 @@ inline void print_cl_generic(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t>
-inline void ex_cs_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cs_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(MEM_TYPE_t) > sizeof(XLEN_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rs1 = swizzle<__uint32_t, CS_RS1X>(encoding)+8;
@@ -432,11 +435,11 @@ inline void ex_cs_generic(__uint32_t encoding, HartState<XLEN_t> *state, Device 
     if constexpr (sizeof(MEM_TYPE_t) >= 16) imm = swizzle<__uint32_t, ExtendBits::Zero, 10, 10, 5, 6, 12, 11, 4>(encoding);
     else if constexpr (sizeof(MEM_TYPE_t) >= 8) imm = swizzle<__uint32_t, ExtendBits::Zero, 6, 5, 12, 10, 3>(encoding);
     else imm = swizzle<__uint32_t, ExtendBits::Zero, 5, 5, 12, 10, 6, 6, 2>(encoding);
-    XLEN_t write_addr = state->regs[rs1] + imm;
-    XLEN_t transferredSize = mem->template Write<XLEN_t>(write_addr, sizeof(MEM_TYPE_t), (char*)&state->regs[rs2]);
+    XLEN_t write_addr = hart->state.regs[rs1] + imm;
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&hart->state.regs[rs2]);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->pc += 2;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t, StringLiteral mnemonic>
@@ -451,15 +454,15 @@ inline void print_cs_generic(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_caddi(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_caddi(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     XLEN_t rd_value = rs1_value + imm;
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -471,10 +474,10 @@ inline void print_caddi(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_caddi16sp(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_caddi16sp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 4, 3, 5, 5, 2, 2, 6, 6, 4>(encoding);
-    state->regs[2] += imm;
-    state->pc += 2;
+    hart->state.regs[2] += imm;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -484,10 +487,10 @@ inline void print_caddi16sp(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cjal(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cjal(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 8, 8, 10, 9, 6, 6, 7, 7, 2, 2, 11, 11, 5, 3, 1>(encoding);
-    state->regs[1] = state->pc + 2;
-    state->pc += imm;
+    hart->state.regs[1] = hart->state.pc + 2;
+    hart->state.pc += imm;
 }
 
 template<typename XLEN_t>
@@ -497,12 +500,12 @@ inline void print_cjal(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cli(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cli(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
-    state->regs[rd] = imm;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = imm;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -513,12 +516,12 @@ inline void print_cli(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_clui(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_clui(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __uint32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2, 12>(encoding);
-    state->regs[rd] = imm;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = imm;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -529,14 +532,14 @@ inline void print_clui(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t, typename Operation>
-inline void ex_ca_format_op(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_ca_format_op(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CA_RDX_RS1X>(encoding)+8;
     __uint32_t rs1 = swizzle<__uint32_t, CA_RDX_RS1X>(encoding)+8;
     __uint32_t rs2 = swizzle<__uint32_t, CA_RS2X>(encoding)+8;
     Operation operation;
-    state->regs[rd] = operation(state->regs[rs1], state->regs[rs2]);
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = operation(hart->state.regs[rs1], hart->state.regs[rs2]);
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<StringLiteral mnemonic>
@@ -548,12 +551,12 @@ inline void print_ca_format_instr(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cj(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cj(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 8, 8, 10, 9, 6, 6, 7, 7, 2, 2, 11, 11, 5, 3, 1>(encoding);
     __uint32_t rd = 0;
-    state->regs[rd] = state->pc + 2;
-    state->regs[0] = 0;
-    state->pc += imm;
+    hart->state.regs[rd] = hart->state.pc + 2;
+    hart->state.regs[0] = 0;
+    hart->state.pc += imm;
 }
 
 template<typename XLEN_t>
@@ -564,10 +567,10 @@ inline void print_cj(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cbeqz(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cbeqz(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 5, 2, 2, 11, 10, 4, 3, 1>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
-    state->pc += state->regs[rs1] ? 2 : imm;
+    hart->state.pc += hart->state.regs[rs1] ? 2 : imm;
 }
 
 template<typename XLEN_t>
@@ -578,10 +581,10 @@ inline void print_cbeqz(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cbnez(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cbnez(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rs1 = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 5, 2, 2, 11, 10, 4, 3, 1>(encoding);
-    state->pc += state->regs[rs1] ? imm : 2;
+    hart->state.pc += hart->state.regs[rs1] ? imm : 2;
 }
 
 template<typename XLEN_t>
@@ -592,18 +595,18 @@ inline void print_cbnez(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_candi(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_candi(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     typedef std::make_signed_t<XLEN_t> SXLEN_t;
     __uint32_t rd = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __uint32_t rs1 = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __int32_t imm = swizzle<__int32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     SXLEN_t imm_value_signed = imm;
     XLEN_t imm_value = *(XLEN_t*)&imm_value_signed;
     XLEN_t rd_value = rs1_value & imm_value;
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -615,22 +618,22 @@ inline void print_candi(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_clwsp(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_clwsp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     typedef std::make_signed_t<XLEN_t> SXLEN_t;
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __uint32_t rs1 = 2;
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 3, 2, 12, 12, 6, 4, 2>(encoding);
     __uint32_t word;
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     SXLEN_t imm_value = imm;
     XLEN_t read_address = rs1_value + imm_value;
     XLEN_t read_size = 4;
-    XLEN_t transferredSize = mem->template Read<XLEN_t>(read_address, read_size, (char*)&word);
+    XLEN_t transferredSize = hart->template Transact<__uint32_t, AccessType::R>(read_address, (char*)&word);
     if (transferredSize != read_size)
         return;
-    state->regs[rd] = word;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = word;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -641,19 +644,19 @@ inline void print_clwsp(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t>
-inline void ex_cs_sp(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cs_sp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(XLEN_t) < sizeof(MEM_TYPE_t)) {
-        state->RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
         return;
     }
     __uint32_t rs2 = swizzle<__uint32_t, CSS_RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 8, 7, 12, 9, 2>(encoding);
-    XLEN_t write_addr = state->regs[2] + imm;
-    MEM_TYPE_t write_value = state->regs[rs2] & ~(MEM_TYPE_t)0;
-    XLEN_t transferredSize = mem->template Write<XLEN_t>(write_addr, sizeof(MEM_TYPE_t), (char*)&write_value);
+    XLEN_t write_addr = hart->state.regs[2] + imm;
+    MEM_TYPE_t write_value = hart->state.regs[rs2] & ~(MEM_TYPE_t)0;
+    XLEN_t transferredSize = hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value);
     if (transferredSize != sizeof(MEM_TYPE_t))
         return;
-    state->pc += 2;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -673,17 +676,17 @@ inline void print_csdsp(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cjalr(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cjalr(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     typedef std::make_signed_t<XLEN_t> SXLEN_t;
     __int32_t imm = 0;
     __uint32_t rd = 1;
     __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     SXLEN_t imm_value = imm;
     imm_value &= ~(XLEN_t)1;
-    state->regs[rd] = state->pc + 2;
-    state->regs[0] = 0;
-    state->pc = rs1_value + imm_value;
+    hart->state.regs[rd] = hart->state.pc + 2;
+    hart->state.regs[0] = 0;
+    hart->state.pc = rs1_value + imm_value;
 }
 
 template<typename XLEN_t>
@@ -695,17 +698,17 @@ inline void print_cjalr(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cjr(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cjr(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     typedef std::make_signed_t<XLEN_t> SXLEN_t;
     __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = 0;
     __uint32_t rd = 0;
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     SXLEN_t imm_value = imm;
     imm_value &= ~(XLEN_t)1;
-    state->regs[rd] = state->pc + 2;
-    state->regs[0] = 0;
-    state->pc = rs1_value + imm_value;
+    hart->state.regs[rd] = hart->state.pc + 2;
+    hart->state.regs[0] = 0;
+    hart->state.pc = rs1_value + imm_value;
 }
 
 template<typename XLEN_t>
@@ -717,16 +720,16 @@ inline void print_cjr(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cadd(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cadd(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CR_RD_RS1>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, CR_RD_RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, CR_RS2>(encoding);
-    XLEN_t rs1_value = state->regs[rs1];
-    XLEN_t rs2_value = state->regs[rs2];
+    XLEN_t rs1_value = hart->state.regs[rs1];
+    XLEN_t rs2_value = hart->state.regs[rs2];
     XLEN_t rd_value = rs1_value + rs2_value;
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -738,12 +741,12 @@ inline void print_cadd(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cmv(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cmv(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CR_RD_RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, CR_RS2>(encoding);
-    state->regs[rd] = state->regs[rs2];
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = hart->state.regs[rs2];
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -755,16 +758,16 @@ inline void print_cmv(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_cslli(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_cslli(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t imm = swizzle<__uint32_t, CI_SHAMT>(encoding);
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __uint32_t rs1 = rd;
     if constexpr (sizeof(XLEN_t) == 16) imm = imm == 0 ? 64 : imm;
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     XLEN_t rd_value = rs1_value << imm;
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -776,16 +779,16 @@ inline void print_cslli(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_csrli(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_csrli(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __uint32_t rs1 = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __uint32_t imm = swizzle<__uint32_t, CB_SHAMT>(encoding);
     if constexpr (sizeof(XLEN_t) == 16) imm = imm == 0 ? 64 : imm;
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     XLEN_t rd_value = rs1_value >> imm;
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>
@@ -797,20 +800,20 @@ inline void print_csrli(__uint32_t encoding, std::ostream* out) {
 }
 
 template<typename XLEN_t>
-inline void ex_csrai(__uint32_t encoding, HartState<XLEN_t> *state, Device *mem) {
+inline void ex_csrai(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __uint32_t rs1 = swizzle<__uint32_t, CB_RDX_RS1X>(encoding)+8;
     __uint32_t imm = swizzle<__uint32_t, CB_SHAMT>(encoding);
     if constexpr (sizeof(XLEN_t) == 16) imm = imm == 0 ? 64 : imm;
-    XLEN_t rs1_value = state->regs[rs1];
+    XLEN_t rs1_value = hart->state.regs[rs1];
     __uint16_t imm_value = imm;
     XLEN_t rd_value = rs1_value >> imm_value;
     // Spec says: the original sign bit is copied into the vacated upper bits
     if (rs1_value & ((XLEN_t)1 << ((sizeof(XLEN_t)*8)-1)))
         rd_value |= (XLEN_t)((1 << imm_value)-1) << ((sizeof(XLEN_t)*8)-imm_value);
-    state->regs[rd] = rd_value;
-    state->regs[0] = 0;
-    state->pc += 2;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
 }
 
 template<typename XLEN_t>

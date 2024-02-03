@@ -16,7 +16,7 @@ enum class HartCallbackArgument {
 };
 
 template<typename XLEN_t>
-class HartState {
+struct HartState {
 
 public:
 

@@ -280,6 +280,8 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     unsigned int tick_hash = hash_tick_params(cycle_limit > 0, check_events_every > 0, print_regs, print_disasm, print_details);
     tick_func<MXLEN_t> tick = tickers[tick_hash];
 
+    std::cout << "Begin Simulation" << std::endl;
+
     auto begin = std::chrono::high_resolution_clock::now();
     event = tick(hart, &clint, &eq, &std::cout, &ticks, cycle_limit, check_events_every, useRegAbiNames);
     auto end = std::chrono::high_resolution_clock::now();
