@@ -50,16 +50,21 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
             // TODO: strictly speaking, SLLI is only valid if FUNCT7 is all zeroes. There are a lot of little non-strict d/c encodings throughout the decoder.
             switch (swizzle<__uint32_t, FUNCT3>(inst)) {
             case RISCV::MinorOpcode::ADDI: return inst_addi<XLEN_t>;
-            case RISCV::MinorOpcode::SLLI: return inst_slli<XLEN_t>;
+            case RISCV::MinorOpcode::SLLI:
+                if (mxlen == RISCV::XlenMode::XL32) {
+                    if (inst & 0xbe000000) return inst_illegal<XLEN_t>;
+                } else if (inst & 0xbc000000) return inst_illegal<XLEN_t>;
+                return inst_slli<XLEN_t>;
             case RISCV::MinorOpcode::SLTI: return inst_slti<XLEN_t>;
             case RISCV::MinorOpcode::SLTIU: return inst_sltiu<XLEN_t>;
             case RISCV::MinorOpcode::XORI: return inst_xori<XLEN_t>;
             case RISCV::MinorOpcode::SRI:
-                switch(swizzle<__uint32_t, FUNCT7>(inst)) {
-                case RISCV::SubMinorOpcode::SRAI: return inst_srai<XLEN_t>;
-                case RISCV::SubMinorOpcode::SRLI: return inst_srli<XLEN_t>;
-                default: return inst_illegal<XLEN_t>;
-                }
+                if (mxlen == RISCV::XlenMode::XL32) {
+                    if (inst & 0xbe000000) return inst_illegal<XLEN_t>;
+                } else if (inst & 0xbc000000) return inst_illegal<XLEN_t>;
+                if (inst & (0x40000000))
+                    return inst_srai<XLEN_t>;
+                return inst_srli<XLEN_t>;
             case RISCV::MinorOpcode::ORI: return inst_ori<XLEN_t>;
             case RISCV::MinorOpcode::ANDI: return inst_andi<XLEN_t>;
             default: return inst_illegal<XLEN_t>;
@@ -72,11 +77,12 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
             case RISCV::MinorOpcode::ADDIW: return inst_addiw<XLEN_t>;
             case RISCV::MinorOpcode::SLLIW: return inst_slliw<XLEN_t>;
             case RISCV::MinorOpcode::SRI:
-                switch(swizzle<__uint32_t, FUNCT7>(inst)) {
-                case RISCV::SubMinorOpcode::SRAIW: return inst_sraiw<XLEN_t>;
-                case RISCV::SubMinorOpcode::SRLIW: return inst_srliw<XLEN_t>;
-                default: return inst_illegal<XLEN_t>;
-                }
+                if (mxlen == RISCV::XlenMode::XL32) {
+                    if (inst & 0xbe000000) return inst_illegal<XLEN_t>;
+                } else if (inst & 0xbc000000) return inst_illegal<XLEN_t>;
+                if (inst & (0x40000000))
+                    return inst_sraiw<XLEN_t>;
+                return inst_srliw<XLEN_t>;
             default: return inst_illegal<XLEN_t>;
         }
         case RISCV::MajorOpcode::LONG_48B_1: return inst_unimplemented<XLEN_t>;
@@ -247,7 +253,7 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
         case 1:
             if (mxlen == RISCV::XlenMode::XL32)
                 return inst_cjal<XLEN_t>;
-            return inst_unimplemented<XLEN_t>; // C.ADDIW TODO
+            return inst_caddiw<XLEN_t>;
         case 2: return inst_cli<XLEN_t>;
         case 3:
             if (swizzle<__uint32_t, CI_RD_RS1>(inst) != 2)
@@ -275,7 +281,7 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
                 case 2: return inst_cor<XLEN_t>;
                 case 3: return inst_cand<XLEN_t>;
                 case 4: return inst_csubw<XLEN_t>;
-                case 5: return inst_caddw<XLEN_t>;
+                case 5: return inst_caddw<XLEN_t>;  
                 case 6: return inst_illegal<XLEN_t>; // Reserved encoding
                 case 7: return inst_illegal<XLEN_t>; // Reserved encoding
                 default: return inst_illegal<XLEN_t>;
@@ -313,8 +319,11 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
                 }
                 return inst_cadd<XLEN_t>;
             } else {
-                if (swizzle<__uint32_t, ExtendBits::Zero, 6, 2>(inst) == 0)
+                if (swizzle<__uint32_t, ExtendBits::Zero, 6, 2>(inst) == 0) {
+                    if (swizzle<__uint32_t, ExtendBits::Zero, 11, 7>(inst) == 0) 
+                        return inst_illegal<XLEN_t>; // Reserved encoding
                     return inst_cjr<XLEN_t>;
+                }
                 return inst_cmv<XLEN_t>;
             }
         case 5: return inst_unimplemented<XLEN_t>; // C.FSDSP C.SQSP TODO

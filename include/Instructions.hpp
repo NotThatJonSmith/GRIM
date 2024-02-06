@@ -155,7 +155,8 @@ inline void print_jal(__uint32_t encoding, std::ostream* out) {
     *out << "jal " << RISCV::regName(rd) << ", " << imm << std::endl;
 }
 
-template<typename XLEN_t, typename OperandType, typename Operation, bool rhs_immediate>
+enum RHSType { REG, IMM, SHAMT };
+template<typename XLEN_t, typename OperandType, typename Operation, RHSType rhsType>
 inline void ex_op_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     if constexpr (sizeof(OperandType) > sizeof(XLEN_t)) {
         hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
@@ -164,9 +165,17 @@ inline void ex_op_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
-    __int32_t imm = swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
+
     OperandType lhs = hart->state.regs[rs1];
-    OperandType rhs = (rhs_immediate ? imm : hart->state.regs[rs2]);
+    OperandType rhs = (rhsType != RHSType::REG ? swizzle<OperandType, ExtendBits::Sign, I_IMM>(encoding) : hart->state.regs[rs2]);
+    if constexpr (rhsType == RHSType::SHAMT) {
+        if constexpr (sizeof(OperandType) == 4) {
+            rhs &= 0x1f;
+        } else {
+            rhs &= 0x3f;
+        }
+    }
+
     Operation operation;
     XLEN_t rd_value = operation(lhs, rhs);
     if constexpr (sizeof(XLEN_t) > sizeof(OperandType)) {
@@ -460,11 +469,31 @@ inline void ex_caddi(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
 }
 
 template<typename XLEN_t>
+inline void ex_caddiw(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
+    __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
+    __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
+    __uint32_t rs1_value = hart->state.regs[rs1];
+    __int32_t rd_value = rs1_value + imm;
+    hart->state.regs[rd] = rd_value;
+    hart->state.regs[0] = 0;
+    hart->state.pc += 2;
+}
+
+template<typename XLEN_t>
 inline void print_caddi(__uint32_t encoding, std::ostream* out) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
     *out << "(C.ADDI) addi " << RISCV::regName(rd) << ", " << RISCV::regName(rs1) << ", " << imm << std::endl;
+}
+
+template<typename XLEN_t>
+inline void print_caddiw(__uint32_t encoding, std::ostream* out) {
+    __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
+    __uint32_t rs1 = swizzle<__uint32_t, CI_RD_RS1>(encoding);
+    __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2>(encoding);
+    *out << "(C.ADDIW) addiw " << RISCV::regName(rd) << ", " << RISCV::regName(rs1) << ", " << imm << std::endl;
 }
 
 template<typename XLEN_t>
@@ -824,42 +853,42 @@ inline void print_csrai(__uint32_t encoding, std::ostream* out) {
 
 template<typename XLEN_t> Instruction<XLEN_t> inst_illegal { ex_illegal<XLEN_t>, print_just_mnemonic<"illegal"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_unimplemented { ex_unimplemented<XLEN_t>, print_just_mnemonic<"unimplemented"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_add    { ex_op_generic<XLEN_t, XLEN_t,                     std::plus<XLEN_t>,       false>, print_r_type_instr<"add"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_addw   { ex_op_generic<XLEN_t, __uint32_t,                 std::plus<__uint32_t>,   false>, print_r_type_instr<"addw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_addi   { ex_op_generic<XLEN_t, XLEN_t,                     std::plus<XLEN_t>,       true>,  print_i_type_instr<"addi", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_addiw  { ex_op_generic<XLEN_t, __uint32_t,                 std::plus<__uint32_t>,   true>,  print_i_type_instr<"addiw", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sub    { ex_op_generic<XLEN_t, XLEN_t,                     std::minus<XLEN_t>,      false>, print_r_type_instr<"sub"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_subw   { ex_op_generic<XLEN_t, __uint32_t,                 std::minus<__uint32_t>,  false>, print_r_type_instr<"subw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sll    { ex_op_generic<XLEN_t, XLEN_t,                     left_shift<XLEN_t>,      false>, print_r_type_instr<"sll"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sllw   { ex_op_generic<XLEN_t, __uint32_t,                 left_shift<__uint32_t>,  false>, print_r_type_instr<"sllw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_slli   { ex_op_generic<XLEN_t, XLEN_t,                     left_shift<XLEN_t>,      true>,  print_i_type_instr<"slli", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_slliw  { ex_op_generic<XLEN_t, __uint32_t,                 left_shift<__uint32_t>,  true>,  print_i_type_instr<"slliw", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_srl    { ex_op_generic<XLEN_t, XLEN_t,                     right_shift<XLEN_t>,     false>, print_r_type_instr<"srl"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_srlw   { ex_op_generic<XLEN_t, __uint32_t,                 right_shift<__uint32_t>, false>, print_r_type_instr<"srlw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_srli   { ex_op_generic<XLEN_t, XLEN_t,                     right_shift<XLEN_t>,     true>,  print_i_type_instr<"srli", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_srliw  { ex_op_generic<XLEN_t, __uint32_t,                 right_shift<__uint32_t>, true>,  print_i_type_instr<"srliw", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sra    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, right_shift<XLEN_t>,     false>, print_r_type_instr<"sra"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_srai   { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, right_shift<XLEN_t>,     true>,  print_i_type_instr<"srai", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sraw   { ex_op_generic<XLEN_t, __int32_t,                  right_shift<__int32_t>,  false>, print_r_type_instr<"sraw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sraiw  { ex_op_generic<XLEN_t, __int32_t,                  right_shift<__int32_t>,  true>,  print_i_type_instr<"sraiw", true> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_slt    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::less<XLEN_t>,       false>, print_r_type_instr<"slt"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sltu   { ex_op_generic<XLEN_t, XLEN_t,                     std::less<XLEN_t>,       false>, print_r_type_instr<"sltu"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_slti   { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::less<XLEN_t>,       true>,  print_i_type_instr<"slti", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_sltiu  { ex_op_generic<XLEN_t, XLEN_t,                     std::less<XLEN_t>,       true>,  print_i_type_instr<"sltiu", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_xor    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_xor<XLEN_t>,    false>, print_r_type_instr<"xor"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_xori   { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_xor<XLEN_t>,    true>,  print_i_type_instr<"xori", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_or     { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_or<XLEN_t>,     false>, print_r_type_instr<"or"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_ori    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_or<XLEN_t>,     true>,  print_i_type_instr<"ori", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_and    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_and<XLEN_t>,    false>, print_r_type_instr<"and"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_andi   { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_and<XLEN_t>,    true>,  print_i_type_instr<"andi", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_mul    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::multiplies<XLEN_t>, false>, print_i_type_instr<"mul", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_mulh   { ex_unimplemented<XLEN_t>, /*TODO*/                                                 print_i_type_instr<"mulh", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_mulhsu { ex_unimplemented<XLEN_t>, /*TODO*/                                                 print_i_type_instr<"mulhsu", false>  };
-template<typename XLEN_t> Instruction<XLEN_t> inst_mulhu  { ex_unimplemented<XLEN_t>, /*TODO*/                                                 print_i_type_instr<"mulhu", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_div    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::divides<XLEN_t>,    false>, print_i_type_instr<"div", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_divu   { ex_op_generic<XLEN_t, XLEN_t,                     std::divides<XLEN_t>,    false>, print_i_type_instr<"divu", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_rem    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::modulus<XLEN_t>,    false>, print_i_type_instr<"rem", false> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_remu   { ex_op_generic<XLEN_t, XLEN_t,                     std::modulus<XLEN_t>,    false>, print_i_type_instr<"remu", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_add    { ex_op_generic<XLEN_t, XLEN_t,                     std::plus<XLEN_t>,       RHSType::REG>,   print_r_type_instr<"add"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_addw   { ex_op_generic<XLEN_t, __uint32_t,                 std::plus<__uint32_t>,   RHSType::REG>,   print_r_type_instr<"addw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_addi   { ex_op_generic<XLEN_t, XLEN_t,                     std::plus<XLEN_t>,       RHSType::IMM>,   print_i_type_instr<"addi", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_addiw  { ex_op_generic<XLEN_t, __uint32_t,                 std::plus<__uint32_t>,   RHSType::IMM>,   print_i_type_instr<"addiw", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sub    { ex_op_generic<XLEN_t, XLEN_t,                     std::minus<XLEN_t>,      RHSType::REG>,   print_r_type_instr<"sub"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_subw   { ex_op_generic<XLEN_t, __uint32_t,                 std::minus<__uint32_t>,  RHSType::REG>,   print_r_type_instr<"subw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sll    { ex_op_generic<XLEN_t, XLEN_t,                     left_shift<XLEN_t>,      RHSType::REG>,   print_r_type_instr<"sll"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sllw   { ex_op_generic<XLEN_t, __uint32_t,                 left_shift<__uint32_t>,  RHSType::REG>,   print_r_type_instr<"sllw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_slli   { ex_op_generic<XLEN_t, XLEN_t,                     left_shift<XLEN_t>,      RHSType::SHAMT>, print_i_type_instr<"slli", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_slliw  { ex_op_generic<XLEN_t, __uint32_t,                 left_shift<__uint32_t>,  RHSType::SHAMT>, print_i_type_instr<"slliw", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_srl    { ex_op_generic<XLEN_t, XLEN_t,                     right_shift<XLEN_t>,     RHSType::REG>,   print_r_type_instr<"srl"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_srlw   { ex_op_generic<XLEN_t, __uint32_t,                 right_shift<__uint32_t>, RHSType::REG>,   print_r_type_instr<"srlw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_srli   { ex_op_generic<XLEN_t, XLEN_t,                     right_shift<XLEN_t>,     RHSType::SHAMT>, print_i_type_instr<"srli", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_srliw  { ex_op_generic<XLEN_t, __uint32_t,                 right_shift<__uint32_t>, RHSType::SHAMT>, print_i_type_instr<"srliw", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sra    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, right_shift<XLEN_t>,     RHSType::REG>,   print_r_type_instr<"sra"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_srai   { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, right_shift<XLEN_t>,     RHSType::SHAMT>, print_i_type_instr<"srai", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sraw   { ex_op_generic<XLEN_t, __int32_t,                  right_shift<__int32_t>,  RHSType::REG>,   print_r_type_instr<"sraw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sraiw  { ex_op_generic<XLEN_t, __int32_t,                  right_shift<__int32_t>,  RHSType::SHAMT>, print_i_type_instr<"sraiw", true> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_slt    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::less<XLEN_t>,       RHSType::REG>,   print_r_type_instr<"slt"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sltu   { ex_op_generic<XLEN_t, XLEN_t,                     std::less<XLEN_t>,       RHSType::REG>,   print_r_type_instr<"sltu"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_slti   { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::less<XLEN_t>,       RHSType::IMM>,   print_i_type_instr<"slti", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_sltiu  { ex_op_generic<XLEN_t, XLEN_t,                     std::less<XLEN_t>,       RHSType::IMM>,   print_i_type_instr<"sltiu", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_xor    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_xor<XLEN_t>,    RHSType::REG>,   print_r_type_instr<"xor"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_xori   { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_xor<XLEN_t>,    RHSType::IMM>,   print_i_type_instr<"xori", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_or     { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_or<XLEN_t>,     RHSType::REG>,   print_r_type_instr<"or"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_ori    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_or<XLEN_t>,     RHSType::IMM>,   print_i_type_instr<"ori", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_and    { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_and<XLEN_t>,    RHSType::REG>,   print_r_type_instr<"and"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_andi   { ex_op_generic<XLEN_t, XLEN_t,                     std::bit_and<XLEN_t>,    RHSType::IMM>,   print_i_type_instr<"andi", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_mul    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::multiplies<XLEN_t>, RHSType::REG>,   print_i_type_instr<"mul", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_mulh   { ex_unimplemented<XLEN_t>, /*TODO*/                                                          print_i_type_instr<"mulh", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_mulhsu { ex_unimplemented<XLEN_t>, /*TODO*/                                                          print_i_type_instr<"mulhsu", false>  };
+template<typename XLEN_t> Instruction<XLEN_t> inst_mulhu  { ex_unimplemented<XLEN_t>, /*TODO*/                                                          print_i_type_instr<"mulhu", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_div    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::divides<XLEN_t>,    RHSType::REG>,   print_i_type_instr<"div", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_divu   { ex_op_generic<XLEN_t, XLEN_t,                     std::divides<XLEN_t>,    RHSType::REG>,   print_i_type_instr<"divu", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_rem    { ex_op_generic<XLEN_t, std::make_signed_t<XLEN_t>, std::modulus<XLEN_t>,    RHSType::REG>,   print_i_type_instr<"rem", false> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_remu   { ex_op_generic<XLEN_t, XLEN_t,                     std::modulus<XLEN_t>,    RHSType::REG>,   print_i_type_instr<"remu", false> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_beq  { ex_branch_generic<XLEN_t, std::equal_to<XLEN_t>>, print_b_type_instr<"beq"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_bne  { ex_branch_generic<XLEN_t, std::not_equal_to<XLEN_t>>, print_b_type_instr<"bne"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_blt  { ex_branch_generic<XLEN_t, std::less<std::make_signed_t<XLEN_t>>>,  print_b_type_instr<"blt"> };
@@ -915,6 +944,7 @@ template<typename XLEN_t> Instruction<XLEN_t> inst_csrrsi { ex_csr_generic<XLEN_
 template<typename XLEN_t> Instruction<XLEN_t> inst_csrrci { ex_csr_generic<XLEN_t, false, true,  true>,   print_csr_instr<"csrrci", true> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_caddi4spn { ex_caddi4spn<XLEN_t>, print_caddi4spn<XLEN_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_caddi { ex_caddi<XLEN_t>, print_caddi<XLEN_t> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_caddiw { ex_caddiw<XLEN_t>, print_caddiw<XLEN_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_cjal { ex_cjal<XLEN_t>, print_cjal<XLEN_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_cli { ex_cli<XLEN_t>, print_cli<XLEN_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_clui { ex_clui<XLEN_t>, print_clui<XLEN_t> };

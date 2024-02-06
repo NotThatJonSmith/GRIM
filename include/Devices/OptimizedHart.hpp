@@ -137,8 +137,8 @@ public:
         memset(icache, 0, sizeof(icache));
     };
 
-    static constexpr std::ostream* memDebugStream = &std::cout;
-    // static constexpr std::ostream* memDebugStream = nullptr;
+    // static constexpr std::ostream* memDebugStream = &std::cout;
+    static constexpr std::ostream* memDebugStream = nullptr;
     template <typename MEM_TYPE_t, AccessType accessType, bool fault=false>
     inline void PrintTransaction(XLEN_t startAddress, char* bytes) {
         if constexpr (sizeof(MEM_TYPE_t) >= 16)
@@ -250,11 +250,12 @@ public:
 private:
 
     inline DecodedInstruction<XLEN_t> Decode(__uint32_t encoded) {
-        if (RISCV::isCompressed(encoded)) {
-            return compressed_inst_lut[encoded & 0x0000ffff];
-        }
-        __uint32_t packed_instruction = swizzle<__uint32_t, ExtendBits::Zero, 31, 20, 14, 12, 6, 2>(encoded);
-        return uncompressed_inst_lut[packed_instruction];
+        return decode_instruction<XLEN_t>(encoded, state.misa.extensions, state.misa.mxlen).executionFunction;
+        // if (RISCV::isCompressed(encoded)) {
+        //     return compressed_inst_lut[encoded & 0x0000ffff];
+        // }
+        // __uint32_t packed_instruction = swizzle<__uint32_t, ExtendBits::Zero, 31, 20, 14, 12, 6, 2>(encoded);
+        // return uncompressed_inst_lut[packed_instruction];
     }
 
     inline void Callback(HartCallbackArgument arg) {

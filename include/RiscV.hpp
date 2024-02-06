@@ -509,12 +509,6 @@ enum MinorOpcode {
 
 enum SubMinorOpcode {
 
-    // OP-IMM / SRI
-    SRLI = 0b0000000, SRAI = 0b0100000,
-
-    // OP-IMM-32 / SRIW
-    SRLIW = 0b0000000, SRAIW = 0b0100000,
-
     // SYSTEM / PRIV
     ECALL_EBREAK_URET = 0, SRET_WFI = 8, MRET = 24, SFENCE_VMA = 9
 
