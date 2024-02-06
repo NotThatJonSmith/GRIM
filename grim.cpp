@@ -233,8 +233,8 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
                   << std::setw(16) << std::setfill('0') << std::hex
                   << elf.sectionHeaders[sid].sh_addr << std::endl;
         hartDevice->Write32(elf.sectionHeaders[sid].sh_addr,
-                              elf.sectionHeaders[sid].sh_size,
-                              elf.sections[sid].bytes.data());
+                            elf.sectionHeaders[sid].sh_size,
+                            elf.sections[sid].bytes.data());
     }
 
     hart->state.resetVector = elf.elfHeader.e_entry;

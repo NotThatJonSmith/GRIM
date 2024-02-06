@@ -137,17 +137,63 @@ public:
         memset(icache, 0, sizeof(icache));
     };
 
+    static constexpr std::ostream* memDebugStream = &std::cout;
+    // static constexpr std::ostream* memDebugStream = nullptr;
+    template <typename MEM_TYPE_t, AccessType accessType, bool fault=false>
+    inline void PrintTransaction(XLEN_t startAddress, char* bytes) {
+        if constexpr (sizeof(MEM_TYPE_t) >= 16)
+            return;
+        if constexpr(memDebugStream == nullptr)
+            return;
+        constexpr unsigned int alignBits = 4;
+        (*memDebugStream) << (accessType == AccessType::R ? "Read" : (accessType == AccessType::W ? "Write" : "Fetch"))
+                            << std::dec << std::setw(0) << sizeof(MEM_TYPE_t)*8
+                            << ": 0x" << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
+                            << (__uint64_t)startAddress
+                            << std::endl;
+        (*memDebugStream) << "| ";
+        XLEN_t bytesPerRow = 1 << alignBits;
+        XLEN_t mask = ~((1 << alignBits) - 1);
+        XLEN_t firstRowStartAddress = startAddress & mask;
+        for (XLEN_t rowStartAddress = firstRowStartAddress; rowStartAddress < startAddress + sizeof(MEM_TYPE_t); rowStartAddress += bytesPerRow) {
+            for (XLEN_t columnIndex = 0; columnIndex < bytesPerRow; columnIndex++) {
+                XLEN_t rowIndex = (rowStartAddress - firstRowStartAddress) / bytesPerRow;
+                if (columnIndex == 0) {
+                    if (rowIndex != 0)
+                        (*memDebugStream) << std::endl << "| ";
+                    (*memDebugStream) << std::hex << std::setfill('0')
+                                        << std::setw(sizeof(XLEN_t)*2)
+                                        << (__uint64_t)rowStartAddress << ": ";
+                }
+                XLEN_t simAddressOfByte = rowStartAddress + columnIndex;
+                if (simAddressOfByte < startAddress || simAddressOfByte >= startAddress + sizeof(MEM_TYPE_t))
+                    (*memDebugStream) << "** ";
+                else if (fault)
+                    (*memDebugStream) << "?? ";
+                else
+                    (*memDebugStream) << std::hex << std::setfill('0') << std::setw(2)
+                                        << ((unsigned int)bytes[simAddressOfByte - startAddress] & 0xff)
+                                        << " ";
+            }
+        }
+        (*memDebugStream) << std::endl;
+    }
+
     template <typename MEM_TYPE_t, AccessType accessType>
     inline bool Transact(XLEN_t startAddress, char* buf) {
         TranslationCacheEntry* cache = accessType == AccessType::R ? cacheR : (accessType == AccessType::W ? cacheW : cacheX);
-        unsigned int index = (startAddress >> 12) & ((1 << cacheBits) - 1); // TODO assumes 4k pages, need flex for supers
-        if (cache[index].virtPageStart >> 12 == startAddress >> 12) [[ likely ]] {
+        XLEN_t index = (startAddress >> 12) & ((1 << cacheBits) - 1); // TODO assumes 4k pages, need flex for supers
+        if ((cache[index].virtPageStart >> 12 == startAddress >> 12) && (cache[index].hostPageStart != nullptr)) [[ likely ]] {
             char *hostAddress = cache[index].hostPageStart + startAddress - cache[index].virtPageStart;
             if constexpr (accessType == AccessType::W) {
                 *(MEM_TYPE_t*)hostAddress = *(MEM_TYPE_t*)buf;
+                // memcpy(hostAddress, buf, sizeof(MEM_TYPE_t));
             } else {
                 *(MEM_TYPE_t*)buf = *(MEM_TYPE_t*)hostAddress;
+                // memcpy(buf, hostAddress, sizeof(MEM_TYPE_t));
             }
+            if constexpr (memDebugStream != nullptr)
+                PrintTransaction<MEM_TYPE_t, accessType>(startAddress, buf);
             return true;
         }
 
@@ -157,10 +203,14 @@ public:
             state.mstatus.mxr, state.mstatus.sum);
         if (fresh_translation.generatedTrap != RISCV::TrapCause::NONE) [[ unlikely ]] {
             state.RaiseException(fresh_translation.generatedTrap, startAddress);
+            if constexpr (memDebugStream != nullptr)
+                PrintTransaction<MEM_TYPE_t, accessType, true>(startAddress, buf);
             return false; // TODO this is a lie; how much was really transacted? Latent bug here I'm just lazy now.
         }
 
         /*TODO what about errant Transaction?*/
+        // TODO - Transact should be in 1,2,4,8,16 bytes, not in 4,8,16. Device class needs to change. Would be nice to
+        //        collapse it all into one transact function for everything for every device.
         target->template Transact<XLEN_t, accessType>(fresh_translation.translated, sizeof(MEM_TYPE_t), buf);
         if (target->hint) {
             XLEN_t offset = startAddress - fresh_translation.virtPageStart;
@@ -191,6 +241,8 @@ public:
             }
 
         }
+        if constexpr (memDebugStream != nullptr)
+            PrintTransaction<MEM_TYPE_t, accessType>(startAddress, buf);
         return true;
     }
 

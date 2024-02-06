@@ -274,8 +274,8 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
                 case 1: return inst_cxor<XLEN_t>;
                 case 2: return inst_cor<XLEN_t>;
                 case 3: return inst_cand<XLEN_t>;
-                case 4: return inst_unimplemented<XLEN_t>; // C.SUBW TODO
-                case 5: return inst_unimplemented<XLEN_t>; // C.ADDW TODO
+                case 4: return inst_csubw<XLEN_t>;
+                case 5: return inst_caddw<XLEN_t>;
                 case 6: return inst_illegal<XLEN_t>; // Reserved encoding
                 case 7: return inst_illegal<XLEN_t>; // Reserved encoding
                 default: return inst_illegal<XLEN_t>;
@@ -297,9 +297,13 @@ constexpr Instruction<XLEN_t> decode_instruction(__uint32_t inst, __uint32_t ext
         case 1:
             if (mxlen == RISCV::XlenMode::XL32 || mxlen == RISCV::XlenMode::XL64)
                 return inst_unimplemented<XLEN_t>; // C.FLDSP TODO
-            return inst_unimplemented<XLEN_t>; // C.LQSP TODO
+            return inst_clqsp<XLEN_t>;
         case 2: return inst_clwsp<XLEN_t>;
-        case 3: return inst_unimplemented<XLEN_t>; // C.FLWSP C.LDSP TODO
+        case 3:
+            if (sizeof(XLEN_t) == 8)
+                return inst_cldsp<XLEN_t>;
+            else
+                return inst_unimplemented<XLEN_t>; // C.FLWSP TODO
         case 4:
             if (inst & 1 << 12) {
                 if (swizzle<__uint32_t, ExtendBits::Zero, 6, 2>(inst) == 0) {
