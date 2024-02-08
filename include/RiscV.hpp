@@ -761,10 +761,6 @@ inline bool csrIsReadOnly(CSRAddress addr) {
 
 // -- Facts about interrupts, exceptions, and traps --
 
-// TODO move to tvec
-constexpr unsigned int tvecModeMask = 0x00000003;
-constexpr unsigned int tvecBaseMask = 0xfffffffc;
-
 // TODO move to interruptReg after making m/s,e/ideleg interruptReg...
 // ugh, crap, the exceptions aren't ireg.
 constexpr static __uint32_t usiMask = 0b0000000000001;
@@ -1063,8 +1059,8 @@ struct tvecReg {
     }
 
     void Write(XLEN_t value) {
-        base = value & RISCV::tvecBaseMask;
-        mode = (RISCV::tvecMode)(value & RISCV::tvecModeMask);
+        base = value & (~(XLEN_t)0 << 2);
+        mode = (RISCV::tvecMode)(value & 0x3);
     }
 
     XLEN_t Read() {

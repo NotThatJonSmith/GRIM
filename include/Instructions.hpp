@@ -30,7 +30,7 @@ struct Instruction {
 #define I_IMM        31, 20
 #define S_IMM        ExtendBits::Sign, 31, 25, 11, 7
 #define B_IMM        ExtendBits::Sign, 31, 31, 7, 7, 30, 25, 11, 8, 1
-#define U_IMM        ExtendBits::Zero, 31, 12, 12
+#define U_IMM        ExtendBits::Sign, 31, 12, 12
 #define J_IMM        ExtendBits::Sign, 31, 31, 19, 12, 20, 20, 30, 21, 1
 
 #define CR_RD_RS1    ExtendBits::Zero, 11, 7
@@ -199,8 +199,13 @@ inline void ex_branch_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) 
 template<typename XLEN_t, bool add_pc>
 inline void ex_upper_immediate_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
-    __uint32_t imm = swizzle<__uint32_t, U_IMM>(encoding);
-    hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
+    __int32_t imm = swizzle<__uint32_t, U_IMM>(encoding);
+    // if constexpr (sizeof(XLEN_t) > 8) {
+    //     __int32_t simm = imm;
+        // hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + simm;
+    // } else {
+        hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
+    // }
     hart->state.regs[0] = 0;
     hart->state.pc += 4;
 }
@@ -264,14 +269,17 @@ inline void ex_store_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     hart->state.pc += 4;
 }
 
-template<typename XLEN_t>
-inline void ex_scw(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+template<typename XLEN_t, typename MEM_TYPE_t>
+inline void ex_sc_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
+    if constexpr (sizeof(XLEN_t) < sizeof(MEM_TYPE_t)) {
+        hart->state.RaiseException(RISCV::TrapCause::ILLEGAL_INSTRUCTION, encoding);
+        return;
+    }
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __uint32_t rs2 = swizzle<__uint32_t, RS2>(encoding);
-    XLEN_t tmp = hart->state.regs[rs2];
-    XLEN_t write_address = hart->state.regs[rs1];
-    if (!hart->template Transact<__uint32_t, AccessType::W>(write_address, (char*)&tmp))
+    MEM_TYPE_t tmp = hart->state.regs[rs2];
+    if (!hart->template Transact<__uint32_t, AccessType::W>(hart->state.regs[rs1], (char*)&tmp))
         return;
     hart->state.regs[rd] = 0; // NOTE, zero means sc succeeded - for now it always does!
     hart->state.pc += 4;
@@ -675,14 +683,14 @@ template<typename XLEN_t>
 inline void print_cldsp(__uint32_t encoding, std::ostream* out) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 4, 2, 12, 12, 6, 5, 3>(encoding);
-    *out << "(C.LDSP) lw " << RISCV::regName(rd) << ",(" << imm << ")" << RISCV::regName(2) << std::endl;
+    *out << "(C.LDSP) ld " << RISCV::regName(rd) << ",(" << imm << ")" << RISCV::regName(2) << std::endl;
 }
 
 template<typename XLEN_t>
 inline void print_clqsp(__uint32_t encoding, std::ostream* out) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 5, 2, 12, 12, 6, 6, 4>(encoding);
-    *out << "(C.LQSP) lw " << RISCV::regName(rd) << ",(" << imm << ")" << RISCV::regName(2) << std::endl;
+    *out << "(C.LQSP) lq " << RISCV::regName(rd) << ",(" << imm << ")" << RISCV::regName(2) << std::endl;
 }
 
 template<typename XLEN_t, typename MEM_TYPE_t>
@@ -693,6 +701,11 @@ inline void ex_cs_sp(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     }
     __uint32_t rs2 = swizzle<__uint32_t, CSS_RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 8, 7, 12, 9, 2>(encoding);
+    if constexpr (sizeof(MEM_TYPE_t) == 8) {
+        imm = swizzle<__uint32_t, ExtendBits::Zero, 9, 7, 12, 10, 3>(encoding);
+    } else if constexpr (sizeof(MEM_TYPE_t) == 16) {
+        imm = swizzle<__uint32_t, ExtendBits::Zero, 10, 7, 12, 11, 4>(encoding);
+    }
     XLEN_t write_addr = hart->state.regs[2] + imm;
     MEM_TYPE_t write_value = hart->state.regs[rs2] & ~(MEM_TYPE_t)0;
     if (!hart->template Transact<MEM_TYPE_t, AccessType::W>(write_addr, (char*)&write_value))
@@ -713,7 +726,7 @@ inline void print_csdsp(__uint32_t encoding, std::ostream* out) {
     __uint32_t rs1 = 2;
     __uint32_t rs2 = swizzle<__uint32_t, CSS_RS2>(encoding);
     __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 8, 7, 12, 9, 2>(encoding);
-    *out << "(C.SDSP) sw " << RISCV::regName(rs2) << ",(" << imm << ")" << RISCV::regName(rs1) << std::endl;
+    *out << "(C.SDSP) sd " << RISCV::regName(rs2) << ",(" << imm << ")" << RISCV::regName(rs1) << std::endl;
 }
 
 template<typename XLEN_t>
@@ -908,8 +921,8 @@ template<typename XLEN_t> Instruction<XLEN_t> inst_sb  { ex_store_generic<XLEN_t
 template<typename XLEN_t> Instruction<XLEN_t> inst_sh  { ex_store_generic<XLEN_t, __uint16_t>, print_store_instr<XLEN_t, __uint16_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_sw  { ex_store_generic<XLEN_t, __uint32_t>, print_store_instr<XLEN_t, __uint32_t> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_sd  { ex_store_generic<XLEN_t, __uint64_t>, print_store_instr<XLEN_t, __uint64_t> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_scw { ex_scw<XLEN_t>, print_r_type_instr<"scw"> };
-template<typename XLEN_t> Instruction<XLEN_t> inst_scd { ex_unimplemented<XLEN_t>, print_r_type_instr<"scd"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_scw { ex_sc_generic<XLEN_t, __uint32_t>, print_r_type_instr<"scw"> };
+template<typename XLEN_t> Instruction<XLEN_t> inst_scd { ex_sc_generic<XLEN_t, __uint64_t>, print_r_type_instr<"scd"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_amoaddw  { ex_amo_generic<XLEN_t, __uint32_t, std::plus<__uint32_t>>, print_r_type_instr<"amoadd.w"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_amoaddd  { ex_amo_generic<XLEN_t, __uint64_t, std::plus<__uint64_t>>, print_r_type_instr<"amoadd.d"> };
 template<typename XLEN_t> Instruction<XLEN_t> inst_amoswapw { ex_amo_generic<XLEN_t, __uint32_t, lhs<__uint32_t>>, print_r_type_instr<"amoswap.w"> };

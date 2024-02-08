@@ -280,6 +280,9 @@ public:
     }
 
     inline void RaiseException(RISCV::TrapCause cause, XLEN_t tval) {
+
+        std::cout << "Raising exception: " << RISCV::trapName(false, cause) << std::endl;
+
         if (cause == RISCV::TrapCause::NONE) {
             return;
         }

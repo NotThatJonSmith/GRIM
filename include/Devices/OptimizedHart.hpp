@@ -250,12 +250,11 @@ public:
 private:
 
     inline DecodedInstruction<XLEN_t> Decode(__uint32_t encoded) {
-        return decode_instruction<XLEN_t>(encoded, state.misa.extensions, state.misa.mxlen).executionFunction;
-        // if (RISCV::isCompressed(encoded)) {
-        //     return compressed_inst_lut[encoded & 0x0000ffff];
-        // }
-        // __uint32_t packed_instruction = swizzle<__uint32_t, ExtendBits::Zero, 31, 20, 14, 12, 6, 2>(encoded);
-        // return uncompressed_inst_lut[packed_instruction];
+        if (RISCV::isCompressed(encoded)) {
+            return compressed_inst_lut[encoded & 0x0000ffff];
+        }
+        __uint32_t packed_instruction = swizzle<__uint32_t, ExtendBits::Zero, 31, 20, 14, 12, 6, 2>(encoded);
+        return uncompressed_inst_lut[packed_instruction];
     }
 
     inline void Callback(HartCallbackArgument arg) {
