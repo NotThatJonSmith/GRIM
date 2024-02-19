@@ -200,12 +200,7 @@ template<typename XLEN_t, bool add_pc>
 inline void ex_upper_immediate_generic(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
     __int32_t imm = swizzle<__uint32_t, U_IMM>(encoding);
-    // if constexpr (sizeof(XLEN_t) > 8) {
-    //     __int32_t simm = imm;
-        // hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + simm;
-    // } else {
-        hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
-    // }
+    hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
     hart->state.regs[0] = 0;
     hart->state.pc += 4;
 }
@@ -549,7 +544,7 @@ inline void print_cli(__uint32_t encoding, std::ostream* out) {
 template<typename XLEN_t>
 inline void ex_clui(__uint32_t encoding, OptimizedHart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, CI_RD_RS1>(encoding);
-    __uint32_t imm = swizzle<__uint32_t, ExtendBits::Sign, 12, 12, 6, 2, 12>(encoding);
+    __int32_t imm = swizzle<__int32_t, ExtendBits::Sign, 12, 12, 6, 2, 12>(encoding);
     hart->state.regs[rd] = imm;
     hart->state.regs[0] = 0;
     hart->state.pc += 2;
@@ -725,7 +720,7 @@ template<typename XLEN_t>
 inline void print_csdsp(__uint32_t encoding, std::ostream* out) {
     __uint32_t rs1 = 2;
     __uint32_t rs2 = swizzle<__uint32_t, CSS_RS2>(encoding);
-    __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 8, 7, 12, 9, 2>(encoding);
+    __int32_t imm = swizzle<__uint32_t, ExtendBits::Zero, 9, 7, 12, 10, 3>(encoding);
     *out << "(C.SDSP) sd " << RISCV::regName(rs2) << ",(" << imm << ")" << RISCV::regName(rs1) << std::endl;
 }
 

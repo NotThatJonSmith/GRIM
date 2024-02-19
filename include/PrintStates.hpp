@@ -21,20 +21,19 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
            << "tw=" << (state->mstatus.tw ? "1 " : "0 ")
            << "tsr=" << (state->mstatus.tsr ? "1 " : "0 ")
            << "sd=" << (state->mstatus.sd ? "1 " : "0 ")
-           << std::endl << "| "
-           << "fs=" << RISCV::floatingPointStateName(state->mstatus.fs)
-           << " xs=" << RISCV::extensionStateName(state->mstatus.xs)
-           << " sxl=" << RISCV::xlenModeName(state->mstatus.sxl)
-           << " uxl=" << RISCV::xlenModeName(state->mstatus.uxl)
-           << std::endl << "| "
-           << " mie=" << (state->mstatus.mie ? "1" : "0")
-           << " mpie=" << (state->mstatus.mpie ? "1" : "0")
-           << " mpp=" << RISCV::privilegeModeName(state->mstatus.mpp)
-           << " sie=" << (state->mstatus.sie ? "1" : "0")
-           << " spie=" << (state->mstatus.spie ? "1" : "0")
-           << " spp=" << RISCV::privilegeModeName(state->mstatus.spp)
-           << " uie=" << (state->mstatus.uie ? "1" : "0")
-           << " upie=" << (state->mstatus.upie ? "1" : "0")
+           << "fs=" << RISCV::floatingPointStateName(state->mstatus.fs) << " "
+           << "xs=" << RISCV::extensionStateName(state->mstatus.xs) << " "
+           << "sxl=" << RISCV::xlenModeName(state->mstatus.sxl) << " "
+           << "uxl=" << RISCV::xlenModeName(state->mstatus.uxl)
+           << std::endl << "|          "
+           << "mie=" << (state->mstatus.mie ? "1 " : "0 ")
+           << "mpie=" << (state->mstatus.mpie ? "1 " : "0 ")
+           << "mpp=" << RISCV::privilegeModeName(state->mstatus.mpp) << " "
+           << "sie=" << (state->mstatus.sie ? "1 " : "0 ")
+           << "spie=" << (state->mstatus.spie ? "1 " : "0 ")
+           << "spp=" << RISCV::privilegeModeName(state->mstatus.spp) << " "
+           << "uie=" << (state->mstatus.uie ? "1 " : "0 ")
+           << "upie=" << (state->mstatus.upie ? "1 " : "0 ")
            << std::endl;
     (*out) << "| satp: mode=" << RISCV::pagingModeName(state->satp.pagingMode)
            << ", ppn=0x" 
@@ -99,7 +98,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " mepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->mepc
-           << "| mtvec=0x" 
+           << " mtvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->mtvec.base
            << " (" << RISCV::tvecModeName(state->mtvec.mode) << ")"
@@ -114,7 +113,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " sepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->sepc
-           << "| stvec=0x" 
+           << " stvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->stvec.base
            << " (" << RISCV::tvecModeName(state->stvec.mode) << ")"
@@ -129,7 +128,7 @@ void PrintArchDetails(HartState<XLEN_t>* state, std::ostream* out) {
     (*out) << " uepc=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->uepc
-           << "| utvec=0x" 
+           << " utvec=0x" 
            << std::hex << std::setfill('0') << std::setw(sizeof(XLEN_t)*2)
            << state->utvec.base
            << " (" << RISCV::tvecModeName(state->utvec.mode) << ")"

@@ -1,4 +1,6 @@
-[submodule "Stella"]
-	path = Stella
-	url = https://github.com/NotThatJonSmith/Stella.git
-	branch = main
+[submodule "external/cxxopts"]
+	path = external/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "external/HighELF"]
+	path = external/HighELF
+	url = https://github.com/NotThatJonSmith/HighELF.git

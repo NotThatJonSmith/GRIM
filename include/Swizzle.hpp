@@ -12,7 +12,7 @@ static inline constexpr XLEN_t swizzleHelper(XLEN_t source_bits, XLEN_t result) 
     XLEN_t sliceLo = values[applied+1];
     XLEN_t slice_len = sliceHi-sliceLo+1;
     result <<= slice_len;
-    result |= (source_bits >> sliceLo) & ((1 << slice_len) - 1);
+    result |= (source_bits >> sliceLo) & (((XLEN_t)1 << slice_len) - 1);
 
     if constexpr (applied + 2 == numSliceInts) {
         return result;
@@ -27,8 +27,7 @@ template <typename XLEN_t, ExtendBits extend, unsigned int... slices>
 inline constexpr XLEN_t swizzle(XLEN_t source_bits) {
     if constexpr (extend == ExtendBits::Sign) {
         constexpr XLEN_t values[sizeof...(slices)] = {slices...};
-        XLEN_t result = source_bits & (1 << values[0]) ? ~0 : 0;
-        return swizzleHelper<XLEN_t, 0, slices...>(source_bits, result);
+        return swizzleHelper<XLEN_t, 0, slices...>(source_bits, source_bits & ((XLEN_t)1 << values[0]) ? ~(XLEN_t)0 : 0);
     }
     return swizzleHelper<XLEN_t, 0, slices...>(source_bits, 0);
 }

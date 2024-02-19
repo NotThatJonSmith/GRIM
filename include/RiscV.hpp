@@ -881,8 +881,8 @@ struct mstatusReg {
     constexpr static __uint32_t tsrMask  = 0b10000000000000000000000;
     constexpr static __uint32_t sdMask32 = 0x80000000;
     constexpr static __uint64_t sdMask64 = 0x8000000000000000;
-    constexpr static __uint64_t uxlMask  = 0x300000000;
-    constexpr static __uint64_t sxlMask  = 0xC00000000;
+    constexpr static __uint64_t uxlMask  = 0x0000000300000000;
+    constexpr static __uint64_t sxlMask  = 0x0000000C00000000;
     // constexpr static __uint128_t sdMask128 = 0x80000000000000000000000000000000;
     constexpr static __uint32_t sppShift = 8;
     constexpr static __uint32_t mppShift = 11;
@@ -926,8 +926,9 @@ struct mstatusReg {
                 uxl = XlenMode::XL32;
                 sxl = XlenMode::XL32;
             } else {
-                uxl = (XlenMode)((uxlMask & value) >> uxlShift);
-                sxl = (XlenMode)((sxlMask & value) >> sxlShift);
+                // TODO changing SXLEN and UXLEN is not yet supported.
+                // uxl = (XlenMode)((uxlMask & value) >> uxlShift);
+                // sxl = (XlenMode)((sxlMask & value) >> sxlShift);
             }
             mprv = mprvMask & value;
             tvm = tvmMask & value;
@@ -1115,12 +1116,12 @@ struct satpReg {
     void Write(XLEN_t value) {
         if constexpr (!std::is_same<XLEN_t, __uint32_t>()) {
             pagingMode = (RISCV::PagingMode)((value >> 60) & 0x0f);
-            asid = (value >> 44) & 0x0fffff;
-            ppn = value & 0x0fffffffffff;
+            asid = (value >> 44) & 0x0ffff;
+            ppn = value & 0x0fff'ffff'ffff;
         } else {
             pagingMode = (RISCV::PagingMode)(value >> 31);
             asid = (value >> 22) & 0x1ff;
-            ppn = value & 0x3fffff;
+            ppn = value & 0x3f'ffff;
         }
     }
 
