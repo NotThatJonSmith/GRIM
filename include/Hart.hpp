@@ -2,7 +2,9 @@
 
 #include <type_traits>
 #include <cstdint>
+#include <iomanip>
 
+#include <Device.hpp>
 #include <RiscVDecoder.hpp>
 
 template<typename XLEN_t>
@@ -15,8 +17,7 @@ struct Translation {
 
 // TODO accelerated WFI states?
 template<typename XLEN_t>
-class OptimizedHart {
-
+class Hart {
 
     static constexpr bool print_physical_pc = true;
     static constexpr bool print_transactions = false;
@@ -50,12 +51,12 @@ public:
 
     HartState<XLEN_t> state;
 
-    OptimizedHart(Device* bus, __uint32_t maximalExtensions) :
+    Hart(Device* bus, __uint32_t maximalExtensions) :
         target(bus),
         configured_extensions(0),
         configured_mxlen(RISCV::XlenMode::XL128),
         state(maximalExtensions) {
-        state.implCallback = std::bind(&OptimizedHart::Callback, this, std::placeholders::_1);
+        state.implCallback = std::bind(&Hart::Callback, this, std::placeholders::_1);
         // TODO callback for changing XLENs
         Reset();
     };

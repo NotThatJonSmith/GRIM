@@ -12,7 +12,7 @@
 #include <Devices/PowerButton.hpp>
 #include <Devices/ProxyKernelServer.hpp>
 #include <Devices/UART.hpp>
-#include <Devices/OptimizedHart.hpp>
+#include <Hart.hpp>
 #include <PrintStates.hpp>
 
 __uint64_t MaskForSize(__uint64_t size) {
@@ -27,7 +27,7 @@ __uint64_t MaskForSize(__uint64_t size) {
 //       the compiler does the right thing in O3.
 template <typename MXLEN_t, bool limit_cycles, bool check_events, bool print_regs, bool print_disasm, bool print_details>
 unsigned int tick_until(
-        OptimizedHart<MXLEN_t> *hart,
+        Hart<MXLEN_t> *hart,
         CoreLocalInterruptor* clint,
         std::queue<unsigned int> *eq,
         std::ostream *out,
@@ -81,7 +81,7 @@ unsigned int tick_until(
 }
 
 template <typename MXLEN_t>
-using tick_func = unsigned int (*)(OptimizedHart<MXLEN_t>*, CoreLocalInterruptor*, std::queue<unsigned int>*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
+using tick_func = unsigned int (*)(Hart<MXLEN_t>*, CoreLocalInterruptor*, std::queue<unsigned int>*, std::ostream*, unsigned int*, unsigned int, unsigned int, bool);
 
 template<typename MXLEN_t, unsigned int TickerHash>
 constexpr std::array<tick_func<MXLEN_t>, 32> add_tickers(std::array<tick_func<MXLEN_t>, 32> arr) {
@@ -177,8 +177,8 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
     MappedPhysicalMemory mem;
     bus.AddDevice32((Device*)&mem, 0, 0xffffffff);
 
-    OptimizedHart<MXLEN_t> *hart;
-    hart = new OptimizedHart<MXLEN_t>(hartDevice, RISCV::stringToExtensions("imacsu"));
+    Hart<MXLEN_t> *hart;
+    hart = new Hart<MXLEN_t>(hartDevice, RISCV::stringToExtensions("imacsu"));
 
     UART uart;
     bus.AddDevice32(&uart, 0x01000000, 0xf);

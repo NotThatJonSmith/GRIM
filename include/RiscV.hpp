@@ -1158,6 +1158,6 @@ struct pmpEntry {
     bool r, w, x, locked;
     pmpAddressMode aMode;
     __uint64_t address;
-} pmpentry[16];
+};
 
 } // namespace RISCV

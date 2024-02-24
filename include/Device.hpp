@@ -5,7 +5,7 @@
 
 #include <iostream>
 
-enum AccessType { R, W, X };
+#include <AccessType.hpp>
 
 class Device {
 
