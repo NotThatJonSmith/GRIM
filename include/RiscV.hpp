@@ -374,6 +374,15 @@ constexpr std::array<const char*, NumRegs> registerAbiNames = {
     "t3", "t4", "t5", "t6"
 };
 
+enum abiRegNum {
+    zero=0, ra=1, sp=2, gp=3, tp=4,
+    t0=5, t1=6, t2=7,
+    s0=8, s1=9,
+    a0=10, a1=11, a2=12, a3=13, a4=14, a5=15, a6=16, a7=17,
+    s2=18, s3=19, s4=20, s5=21, s6=22, s7=23, s8=24, s9=25, s10=26, s11=27,
+    t3=28, t4=29, t5=30, t6=31
+};
+
 constexpr std::array<const char*, NumRegs> registerFlatNames = {
     "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
     "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22",

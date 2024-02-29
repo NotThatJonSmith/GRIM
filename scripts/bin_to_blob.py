@@ -3,7 +3,8 @@ from pathlib import Path
 
 def generate_header(bin_path, header_path=None):
     file_stem = bin_path.stem
-    variable_name = file_stem.upper() + "_BYTES"
+    variable_name = file_stem + "_bytes"
+    variable_name = variable_name.replace(".", "_")
     if not header_path:
         header_path = file_stem + ".h"
     header_content = f"#pragma once\n"

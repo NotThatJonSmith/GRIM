@@ -67,7 +67,7 @@ public:
             unsigned int icacheIndex = (state.pc >> 1) & ((1<<icacheBits)-1);
             if constexpr (!icache_disabled) {
                 ICacheEntry *inst = &icache[icacheIndex];
-                if (inst->full_pc == state.pc) [[ likely ]] {
+                if (inst->instruction != nullptr && inst->full_pc == state.pc) [[ likely ]] {
                     inst->instruction(inst->encoding, this);
                     continue;
                 }
