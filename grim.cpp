@@ -174,7 +174,7 @@ void run_simulation(cxxopts::ParseResult parsed_arguments) {
 
     Device *hartDevice = print_mem ? (Device*)&iologger : (Device*)&bus;
 
-    MappedPhysicalMemory mem;
+    MappedPhysicalMemory mem(0x100000000);
     bus.AddDevice32((Device*)&mem, 0, 0xffffffff);
 
     Hart<MXLEN_t> *hart;

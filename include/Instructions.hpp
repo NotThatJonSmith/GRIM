@@ -199,7 +199,8 @@ inline void ex_branch_generic(__uint32_t encoding, Hart<XLEN_t> *hart) {
 template<typename XLEN_t, bool add_pc>
 inline void ex_upper_immediate_generic(__uint32_t encoding, Hart<XLEN_t> *hart) {
     __uint32_t rd = swizzle<__uint32_t, RD>(encoding);
-    __int32_t imm = swizzle<__uint32_t, U_IMM>(encoding);
+    typedef std::make_signed_t<XLEN_t> SXLEN_t;
+    SXLEN_t imm = swizzle<SXLEN_t, U_IMM>(encoding);
     hart->state.regs[rd] = (add_pc ? hart->state.pc : 0) + imm;
     hart->state.regs[0] = 0;
     hart->state.pc += 4;

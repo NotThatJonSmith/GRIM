@@ -55,13 +55,19 @@ check_docker:
 %.rv64gc.bin: %.rv64gc.o check_docker
 	$(call CROSS_BASH,/cross/bin/riscv64-unknown-elf-objcopy -O binary $< $@)
 
-%.rv32gc.h: %.rv32gc.bin
-	python3 ./scripts/bin_to_blob.py $< -o $@
+%.rv32gc.o.disasm: %.rv32gc.o check_docker
+	$(call CROSS_BASH,/cross/bin/riscv32-unknown-elf-objdump -d $< > $@)
 
-%.rv64gc.h: %.rv64gc.bin
-	python3 ./scripts/bin_to_blob.py $< -o $@
+%.rv64gc.o.disasm: %.rv64gc.o check_docker
+	$(call CROSS_BASH,/cross/bin/riscv64-unknown-elf-objdump -d $< > $@)
 
-tests/obj/%.o: tests/src/%.cpp
+%.rv32gc.h: %.rv32gc.bin %.rv32gc.o.disasm
+	python3 ./scripts/bin_to_blob.py $^ -o $@
+
+%.rv64gc.h: %.rv64gc.bin %.rv64gc.o.disasm
+	python3 ./scripts/bin_to_blob.py $^ -o $@
+
+tests/obj/%.o: tests/src/%.cpp $(GRIM_HEADERS)
 	mkdir -p $(dir $@)
 	python3 ./scripts/extract_target_asm.py -od tests/obj $<
 	$(eval GEN_ASMS := $(shell python3 ./scripts/extract_target_asm.py -od tests/obj --filenames $<))
@@ -71,8 +77,8 @@ tests/obj/%.o: tests/src/%.cpp
 		$(MAKE) $(GEN_HEADERS); \
 	fi
 	$(CXX) $(CXXFLAGS) \
-	-Iinclude -I$(GTEST_INCLUDE) -Itests/obj \
-	-c $< -o $@
+		-Iinclude -I$(GTEST_INCLUDE) -Itests/obj -Itests/include \
+		-c $< -o $@
 
 TEST_SRC_FILES=$(wildcard tests/src/*.cpp)
 TEST_OBJ_FILES=$(patsubst tests/src/%.cpp,tests/obj/%.o,$(TEST_SRC_FILES))

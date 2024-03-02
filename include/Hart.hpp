@@ -88,7 +88,7 @@ public:
         ICacheEntry *inst = &icache[(state.pc >> 1) & ((1<<icacheBits)-1)];
         XLEN_t print_pc = state.pc;
         if constexpr (!icache_disabled) {
-            if (inst->full_pc == state.pc) [[ likely ]] {
+            if (inst->instruction != nullptr && inst->full_pc == state.pc) [[ likely ]] {
                 if constexpr (sizeof(XLEN_t) > 8) {
                     std::cout << "128 bit printing not supported" << std::endl;
                 } else {

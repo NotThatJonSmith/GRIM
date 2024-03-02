@@ -11,10 +11,10 @@
 class MappedPhysicalMemory final : public Device {
 
 public:
-    MappedPhysicalMemory() {
+    MappedPhysicalMemory(__uint64_t size) {
         memStartAddress = (char*)mmap(
             NULL,
-            0x100000000,
+            size,
             PROT_READ | PROT_WRITE,
             MAP_ANONYMOUS | MAP_PRIVATE,
             -1,

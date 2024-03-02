@@ -2,6 +2,8 @@
 
 #include <Device.hpp>
 #include <vector>
+#include <iostream>
+#include <iomanip>
 
 class Bus final : public Device {
 
@@ -77,6 +79,12 @@ private:
                 return result;
             }
         }
+
+        if constexpr (sizeof(T) <= 8)
+            std::cerr << "Bus: Unhandled transaction at address " << startAddress << " of size " << size << std::endl;
+        else
+            std::cerr << "Bus: Unhandled transaction. 128-bit printing is not supported." << std::endl;
+     
         return 0;
     }
 
