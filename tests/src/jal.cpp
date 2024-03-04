@@ -7,7 +7,7 @@
 // jump target address. Jumps can therefore target a ±1 MiB range. JAL stores
 // the address of the instruction following the jump (pc+4) into register rd.
 
-/* @EncodeAsm: InstructionJAL.short.rv32gc
+/* @EncodeAsm: InstructionJAL.short.rv32gc InstructionJAL.short.rv64gc
 a:  jal a0, c
 b:  jal a1, d
 c:  jal a2, b
@@ -24,12 +24,6 @@ TEST_F(HartTest32, InstructionJAL_short) {
     ASSERT_EQ(hart.state.regs[RISCV::abiRegNum::a2], (__uint32_t)0x8000'000c);
 }
 
-/* @EncodeAsm: InstructionJAL.short.rv64gc
-a:  jal a0, c
-b:  jal a1, d
-c:  jal a2, b
-d:  j 0
-*/
 #include <InstructionJAL.short.rv64gc.h>
 TEST_F(HartTest64, InstructionJAL_short) {
     bus.Write32(0x80000000, sizeof(InstructionJAL_short_rv32gc_bytes), (char*)InstructionJAL_short_rv32gc_bytes);
@@ -41,7 +35,7 @@ TEST_F(HartTest64, InstructionJAL_short) {
     ASSERT_EQ(hart.state.regs[RISCV::abiRegNum::a2], (__uint64_t)0x0000'0000'8000'000c);
 }
 
-/* @EncodeAsm: j0.rv32gc
+/* @EncodeAsm: j0.rv32gc j0.rv64gc
     j 0
 */
 #include <j0.rv32gc.h>
@@ -78,9 +72,6 @@ TEST_F(HartTest32, InstructionJAL_long) {
     ASSERT_EQ(hart.state.pc, (__uint32_t)0xfff00000);
 }
 
-/* @EncodeAsm: j0.rv64gc
-    j 0
-*/
 #include <j0.rv64gc.h>
 TEST_F(HartTest64, InstructionJAL_long) {
     // Longest forward jump, no PC overflow - same as rv32gc

@@ -9,8 +9,7 @@
 // result is not required.
 
 // Basic functionality - done
-// Bit 0 of the target address is always zero {imm even, imm odd} X {rs1 even, rs1 odd}
-// jump targets are sane with respect to overflows
+// Caught bug - Bit 0 of the target address is always zero {imm even, imm odd} X {rs1 even, rs1 odd}
 
 /* @EncodeAsm: InstructionJALR.rv32gc
 
@@ -38,3 +37,32 @@ TEST_F(HartTest32, InstructionJALR) {
     RunAtLeast(20);
     ASSERT_EQ(hart.state.regs[RISCV::abiRegNum::a2], (__uint32_t)0x4);
 }
+
+/* @EncodeAsm: InstructionJALR.rv64gc
+
+    li a0, 0x80000000
+    li a2, 0
+    j test_start
+
+    addi a2, a2, 1
+    jr a1
+
+test_start:
+    jalr a1, a0, 10
+    jalr a1, a0, 11
+    li a0, 0x80000001
+    jalr a1, a0, 9
+    jalr a1, a0, 10
+    j 0
+
+*/
+#include <InstructionJALR.rv64gc.h>
+TEST_F(HartTest64, InstructionJALR) {
+    bus.Write32(0x80000000, sizeof(InstructionJALR_rv64gc_bytes), (char*)InstructionJALR_rv64gc_bytes);
+    hart.state.resetVector = 0x80000000;
+    hart.Reset();
+    RunAtLeast(20);
+    ASSERT_EQ(hart.state.regs[RISCV::abiRegNum::a2], (__uint32_t)0x4);
+}
+
+// TODO - jump targets are sane with respect to overflows

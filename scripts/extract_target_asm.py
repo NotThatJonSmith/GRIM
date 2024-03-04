@@ -18,16 +18,15 @@ def extract_special_comments(code):
 
         # Get the name of the blob
         end_of_line = code.find('\n', i)
-        name = code[i:end_of_line]
-        if not name.strip():
-            raise ValueError(f'Empty name at line {i}')
+
+        names = code[i:end_of_line].strip().split()
         i = end_of_line + 1
 
         # Find the end of the comment
         end = code.find(end_sigil, i)
         if end == -1:
             raise ValueError(f'Unmatched {start_sigil}')
-        yield name, code[i:end]
+        yield names, code[i:end]
         i = end + len(end_sigil)
 
 if __name__ == '__main__':
@@ -40,12 +39,13 @@ if __name__ == '__main__':
     for input_file in args.input_files:
         cpp_code = open(input_file, 'r').read()
         for asm_section in extract_special_comments(cpp_code):
-            name, asm_code = asm_section
-            name += '.S'
-            out_path = args.output_dir / name
-            if args.filenames:
-                print(out_path.as_posix(), end=' ')
-            else:
-                print(f'Writing {name} into {out_path}')
-                with open(out_path, 'w') as f:
-                    f.write(asm_code)
+            names, asm_code = asm_section
+            for name in names:
+                name += '.S'
+                out_path = args.output_dir / name
+                if args.filenames:
+                    print(out_path.as_posix(), end=' ')
+                else:
+                    print(f'Writing {name} into {out_path}')
+                    with open(out_path, 'w') as f:
+                        f.write(asm_code)

@@ -4,13 +4,15 @@
 // LUI - done
 // AUIPC - done
 // JAL - done
-// JALR
+// JALR - mostly done, PC overflow stuff is TODO
+
 // BEQ
 // BNE
-// BLT
+// BLT - done
 // BGE
 // BLTU
 // BGEU
+
 // LB
 // LH
 // LW
@@ -18,9 +20,11 @@
 // LBU
 // LHU
 // LWU
+
 // SB
 // SH
 // SW
+
 // ADDI
 // ADDIW
 // SLTI
@@ -34,6 +38,7 @@
 // SRLIW
 // SRAI
 // SRAIW
+
 // ADD
 // ADDW
 // SUB
@@ -49,16 +54,19 @@
 // SRAW
 // OR
 // AND
+
 // FENCE
 // FENCE.I
 // ECALL
 // EBREAK
+
 // CSRRW
 // CSRRS
 // CSRRC
 // CSRRWI
 // CSRRSI
 // CSRRCI
+
 // MUL
 // MULH
 // MULHSU
@@ -72,6 +80,7 @@
 // DIVUW
 // REMW
 // REMUW
+
 // LR.W
 // SC.W
 // AMOSWAP.W
@@ -94,6 +103,7 @@
 // AMOMAX.D
 // AMOMINU.D
 // AMOMAXU.D
+
 // FLW
 // FSW
 // FMADD.S
