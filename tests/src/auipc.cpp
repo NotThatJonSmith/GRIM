@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
 #include <HartFixture.hpp>
 
-/* @EncodeAsm: InstructionAUIPC.rv32gc
 // AUIPC (add upper immediate to pc) is used to build pc-relative addresses and
 // uses the U-type format. AUIPC forms a 32-bit offset from the 20-bit
 // U-immediate, filling in the lowest 12 bits with zeros, adds this offset to
 // the address of the AUIPC instruction, then places the result in register rd.
+
+/* @EncodeAsm: InstructionAUIPC.rv32gc
     auipc a0, 0x00000
     auipc a1, 0xfffff
     auipc a2, 0x00001

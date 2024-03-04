@@ -222,10 +222,10 @@ inline void ex_jalr(__uint32_t encoding, Hart<XLEN_t> *hart) {
     __uint32_t rs1 = swizzle<__uint32_t, RS1>(encoding);
     __int32_t imm = (__int32_t)swizzle<__uint32_t, ExtendBits::Sign, I_IMM>(encoding);
     SXLEN_t imm_value = imm;
-    imm_value &= ~(XLEN_t)1;
     hart->state.regs[rd] = hart->state.pc + 4;
     hart->state.regs[0] = 0;
     hart->state.pc = hart->state.regs[rs1] + imm_value;
+    hart->state.pc &= ~(XLEN_t)1;
 }
 
 // TODO endianness-agnostic impl; for now host and RV being both LE save us

@@ -2,3 +2,4 @@ deps/
 build/
 build.ninja
 .ninja_log
+.dSYM

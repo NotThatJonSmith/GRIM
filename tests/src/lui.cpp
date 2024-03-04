@@ -1,10 +1,15 @@
 #include <gtest/gtest.h>
 #include <HartFixture.hpp>
 
-/* @EncodeAsm: InstructionLUI.rv32gc
 // LUI (load upper immediate) is used to build 32-bit constants and uses the
 // U-type format. LUI places the U-immediate value in the top 20 bits of the
 // destination register rd, filling in the lowest 12 bits with zeros.
+
+// LUI (load upper immediate) uses the same opcode as RV32I. LUI places the
+// 20-bit U-immediate into bits 31–12 of register rd and places zero in the
+// lowest 12 bits. The 32-bit result is sign-extended to 64 bits.
+
+/* @EncodeAsm: InstructionLUI.rv32gc
     lui a0, 0x00000
     lui a1, 0xfffff
     lui a2, 0x00001
@@ -31,9 +36,6 @@ TEST_F(HartTest32, InstructionLUI) {
 }
 
 /* @EncodeAsm: InstructionLUI.rv64gc
-// LUI (load upper immediate) uses the same opcode as RV32I. LUI places the
-// 20-bit U-immediate into bits 31–12 of register rd and places zero in the
-// lowest 12 bits. The 32-bit result is sign-extended to 64 bits.
     lui a0, 0x00000
     lui a1, 0xfffff
     lui a2, 0x00001

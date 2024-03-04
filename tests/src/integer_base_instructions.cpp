@@ -1,85 +1,193 @@
 #include <gtest/gtest.h>
 #include <HartFixture.hpp>
 
-// TODO JALR
-
-// TODO BEQ
-// TODO BNE
-// TODO BLT
-// TODO BGE
-// TODO BLTU
-// TODO BGEU
-
-// TODO LB
-// TODO LH
-// TODO LW
-// TODO LD
-// TODO LBU
-// TODO LHU
-// TODO LWU
-
-// TODO SB
-// TODO SH
-// TODO SW
-
-// TODO ADDI
-// TODO ADDIW
-// TODO SLTI
-// TODO SLTIU
-// TODO XORI
-// TODO ORI
-// TODO ANDI
-// TODO SLLI
-// TODO SLLIW
-// TODO SRLI
-// TODO SRLIW
-// TODO SRAI
-// TODO SRAIW
-
-// TODO ADD
-// TODO ADDW
-// TODO SUB
-// TODO SUBW
-// TODO SLL
-// TODO SLLW
-// TODO SLT
-// TODO SLTU
-// TODO XOR
-// TODO SRL
-// TODO SRLW
-// TODO SRA
-// TODO SRAW
-// TODO OR
-// TODO AND
-
-// TODO FENCE
-// TODO FENCE.I
-
-// TODO ECALL
-// TODO EBREAK
-
-// TODO CSRRW
-// TODO CSRRS
-// TODO CSRRC
-// TODO CSRRWI
-// TODO CSRRSI
-// TODO CSRRCI
-
-// TODO MUL
-// TODO MULH
-// TODO MULHSU
-// TODO MULHU
-// TODO DIV
-// TODO DIVU
-// TODO REM
-// TODO REMU
-
-// TODO MULW
-// TODO DIVW
-// TODO DIVUW
-// TODO REMW
-// TODO REMUW
-
+// LUI - done
+// AUIPC - done
+// JAL - done
+// JALR
+// BEQ
+// BNE
+// BLT
+// BGE
+// BLTU
+// BGEU
+// LB
+// LH
+// LW
+// LD
+// LBU
+// LHU
+// LWU
+// SB
+// SH
+// SW
+// ADDI
+// ADDIW
+// SLTI
+// SLTIU
+// XORI
+// ORI
+// ANDI
+// SLLI
+// SLLIW
+// SRLI
+// SRLIW
+// SRAI
+// SRAIW
+// ADD
+// ADDW
+// SUB
+// SUBW
+// SLL
+// SLLW
+// SLT
+// SLTU
+// XOR
+// SRL
+// SRLW
+// SRA
+// SRAW
+// OR
+// AND
+// FENCE
+// FENCE.I
+// ECALL
+// EBREAK
+// CSRRW
+// CSRRS
+// CSRRC
+// CSRRWI
+// CSRRSI
+// CSRRCI
+// MUL
+// MULH
+// MULHSU
+// MULHU
+// DIV
+// DIVU
+// REM
+// REMU
+// MULW
+// DIVW
+// DIVUW
+// REMW
+// REMUW
+// LR.W
+// SC.W
+// AMOSWAP.W
+// AMOADD.W
+// AMOXOR.W
+// AMOAND.W
+// AMOOR.W
+// AMOMIN.W
+// AMOMAX.W
+// AMOMINU.W
+// AMOMAXU.W
+// LR.D
+// SC.D
+// AMOSWAP.D
+// AMOADD.D
+// AMOXOR.D
+// AMOAND.D
+// AMOOR.D
+// AMOMIN.D
+// AMOMAX.D
+// AMOMINU.D
+// AMOMAXU.D
+// FLW
+// FSW
+// FMADD.S
+// FMSUB.S
+// FNMSUB.S
+// FNMADD.S
+// FADD.S
+// FSUB.S
+// FMUL.S
+// FDIV.S
+// FSQRT.S
+// FSGNJ.S
+// FSGNJN.S
+// FSGNJX.S
+// FMIN.S
+// FMAX.S
+// FCVT.W.S
+// FCVT.WU.S
+// FMV.X.W
+// FEQ.S
+// FLT.S
+// FLE.S
+// FCLASS.S
+// FCVT.S.W
+// FCVT.S.WU
+// FMV.W.X
+// FCVT.L.S 
+// FCVT.LU.S 
+// FCVT.S.L 
+// FCVT.S.LU
+// FLD
+// FSD 
+// FMADD.D 
+// FMSUB.D 
+// FNMSUB.D 
+// FNMADD.D 
+// FADD.D 
+// FSUB.D 
+// FMUL.D 
+// FDIV.D 
+// FSQRT.D 
+// FSGNJ.D 
+// FSGNJN.D 
+// FSGNJX.D 
+// FMIN.D 
+// FMAX.D 
+// FCVT.S.D 
+// FCVT.D.S 
+// FEQ.D 
+// FLT.D 
+// FLE.D 
+// FCLASS.D 
+// FCVT.W.D 
+// FCVT.WU.D 
+// FCVT.D.W 
+// FCVT.D.WU
+// FCVT.L.D 
+// FCVT.LU.D 
+// FMV.X.D 
+// FCVT.D.L 
+// FCVT.D.LU 
+// FMV.D.X
+// FLQ
+// FSQ 
+// FMADD.Q 
+// FMSUB.Q 
+// FNMSUB.Q 
+// FNMADD.Q 
+// FADD.Q 
+// FSUB.Q 
+// FMUL.Q 
+// FDIV.Q 
+// FSQRT.Q 
+// FSGNJ.Q 
+// FSGNJN.Q 
+// FSGNJX.Q 
+// FMIN.Q 
+// FMAX.Q 
+// FCVT.S.Q 
+// FCVT.Q.S 
+// FCVT.D.Q 
+// FCVT.Q.D 
+// FEQ.Q 
+// FLT.Q 
+// FLE.Q 
+// FCLASS.Q 
+// FCVT.W.Q 
+// FCVT.WU.Q 
+// FCVT.Q.W 
+// FCVT.Q.WU
+// FCVT.L.Q 
+// FCVT.LU.Q 
+// FCVT.Q.L 
+// FCVT.Q.LU
 
 /* @EncodeAsm: InstructionADDIW.rv64gc
     li a0, 2
